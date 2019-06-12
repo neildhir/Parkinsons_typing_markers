@@ -1,17 +1,5 @@
+Natural language processing for habitual error detection
 =========
-haberrsPD
-=========
-
-
-.. image:: https://img.shields.io/pypi/v/haberrspd.svg
-        :target: https://pypi.python.org/pypi/haberrspd
-
-.. image:: https://img.shields.io/travis/wagglefoot/haberrspd.svg
-        :target: https://travis-ci.org/wagglefoot/haberrspd
-
-.. image:: https://readthedocs.org/projects/haberrspd/badge/?version=latest
-        :target: https://haberrspd.readthedocs.io/en/latest/?badge=latest
-        :alt: Documentation Status
 
 
 High level
