@@ -7,11 +7,14 @@ import sys
 
 import torch
 import torch.nn.functional as F
+from livelossplot import PlotLosses
 from torch import nn, optim
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
-from haberrspd.charCNN.auxiliary import make_MJFF_data_loader, save_checkpoint, count_trainable_parameters
+from haberrspd.charCNN.auxiliary import (count_trainable_parameters,
+                                         make_MJFF_data_loader,
+                                         save_checkpoint)
 from haberrspd.charCNN.metric import print_f_score
 from haberrspd.charCNN.model import CharCNN
 
@@ -64,41 +67,53 @@ def train(train_loader,
         # model = torch.nn.DataParallel(model).cuda()  # Only use if parallel GPU support
         model.cuda()
 
+    # Call live-loss plots
+    liveloss = PlotLosses()
+
     # Call train on pytorch model
     model.train()
 
     for epoch in range(start_epoch, args.epochs+1):
+        logs = {}  # For live-loss plotting
+        running_loss = 0.0
+        running_corrects = 0
         if args.dynamic_lr and args.optimizer != 'Adam':
             scheduler.step()
         for i_batch, data in enumerate(train_loader, start=start_iter):
+            # X, y
             inputs, target = data
-
             if args.cuda:
                 inputs, target = inputs.cuda(), target.cuda()
 
             inputs = Variable(inputs)
             target = Variable(target)
-            logit = model(inputs)
-            loss = F.nll_loss(logit, target)
+            estimated_label = model(inputs)
+            loss = F.nll_loss(estimated_label, target)
             optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_  # Old version (below) is deprecated
-            # torch.nn.utils.clip_grad_norm(model.parameters(), args.max_norm)
+            torch.nn.utils.clip_grad_norm_
             optimizer.step()
 
             if args.cuda:
                 torch.cuda.synchronize()
 
+            # For live plotting and learning checks
+            corrects = (torch.max(estimated_label, 1)[1].view(target.size()).data == target.data).sum()
+            # Get running score
+            running_corrects += corrects
+            # Get running loss
+            running_loss += loss.detach() * inputs.size(0)
+            # Get accuracy as function of corrects
+            accuracy = 100.0 * corrects/args.batch_size
+
             if args.verbose:
                 print('\nTargets, Predicates')
                 print(torch.cat((target.unsqueeze(1), torch.unsqueeze(
-                    torch.max(logit, 1)[1].view(target.size()).data, 1)), 1))
+                    torch.max(estimated_label, 1)[1].view(target.size()).data, 1)), 1))
                 print('\nLogit')
-                print(logit)
+                print(estimated_label)
 
             if i_batch % args.log_interval == 0:
-                corrects = (torch.max(logit, 1)[1].view(target.size()).data == target.data).sum()
-                accuracy = 100.0 * corrects/args.batch_size
                 print('Epoch[{}] Batch[{}] - loss: {:.6f}  lr: {:.5f}  acc: {:.3f}% ({}/{})'.format(epoch,
                                                                                                     i_batch,
                                                                                                     loss.data,
@@ -108,8 +123,20 @@ def train(train_loader,
                                                                                                     corrects,
                                                                                                     args.batch_size))
             if i_batch % args.val_interval == 0:
-                val_loss, val_acc = eval(dev_loader, model, epoch, i_batch, optimizer, args)
+                validation_loss, validation_accuracy = eval(dev_loader,
+                                                            model,
+                                                            epoch,
+                                                            i_batch,
+                                                            optimizer,
+                                                            args)
             i_batch += 1
+
+        # Get per-epoch metrics
+        epoch_loss = running_loss / len(train_loader.dataset)
+        epoch_accuracy = running_corrects.float() / len(train_loader.dataset)
+        # For live plotting
+        logs['log loss'] = epoch_loss.item()
+        logs['accuracy'] = epoch_accuracy.item()
 
         if args.checkpoint and epoch % args.save_interval == 0:
             file_path = '%s/CharCNN_epoch_%d.pth.tar' % (args.save_folder, epoch)
@@ -120,10 +147,18 @@ def train(train_loader,
                             file_path)
 
         # Validation
-        val_loss, val_acc = eval(dev_loader, model, epoch, i_batch, optimizer, args)
+        validation_loss, validation_accuracy = eval(dev_loader,
+                                                    model,
+                                                    epoch,
+                                                    i_batch,
+                                                    optimizer,
+                                                    args)
+        # For live plotting
+        logs['val_log loss'] = validation_loss.item()
+        logs['val_accuracy'] = validation_accuracy.item()
 
         # Save best validation epoch model
-        if best_acc is None or val_acc > best_acc:
+        if best_acc is None or validation_accuracy > best_acc:
             file_path = '%s/CharCNN_best.pth.tar' % (args.save_folder)
             print("\r=> found better validated model, saving to %s" % file_path)
             save_checkpoint(model,
@@ -131,8 +166,12 @@ def train(train_loader,
                              'optimizer': optimizer.state_dict(),
                              'best_acc': best_acc},
                             file_path)
-            best_acc = val_acc
+            best_acc = validation_accuracy
         print('\n')
+
+        # Plot epoch metrics live
+        liveloss.update(logs)
+        liveloss.draw()
 
 
 def eval(data_loader,
