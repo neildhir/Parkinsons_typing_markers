@@ -104,5 +104,6 @@ ENV/
 
 # mypy
 .mypy_cache/
+haberrspfd/charCNN/run_results/
 haberrspd/charCNN/run_results/CharCNN_best.pth.tar
 *.tar
