@@ -64,6 +64,7 @@ def train(train_loader,
 
     # gpu
     if args.cuda:
+        assert torch.cuda.is_available()
         # model = torch.nn.DataParallel(model).cuda()  # Only use if parallel GPU support
         model.cuda()
 
@@ -87,7 +88,9 @@ def train(train_loader,
 
             inputs = Variable(inputs)
             target = Variable(target)
+            # Get sentence classification from model
             estimated_label = model(inputs)
+            # Calculate the loss
             loss = F.nll_loss(estimated_label, target)
             optimizer.zero_grad()
             loss.backward()
@@ -113,7 +116,7 @@ def train(train_loader,
                 print('\nLogit')
                 print(estimated_label)
 
-            if i_batch % args.log_interval == 0:
+            if i_batch % args.log_interval == 0 and args.plot_live is False:
                 print('Epoch[{}] Batch[{}] - loss: {:.6f}  lr: {:.5f}  acc: {:.3f}% ({}/{})'.format(epoch,
                                                                                                     i_batch,
                                                                                                     loss.data,
@@ -123,17 +126,18 @@ def train(train_loader,
                                                                                                     corrects,
                                                                                                     args.batch_size))
             if i_batch % args.val_interval == 0:
-                validation_loss, validation_accuracy = eval(dev_loader,
-                                                            model,
-                                                            epoch,
-                                                            i_batch,
-                                                            optimizer,
-                                                            args)
+                val_loss, val_acc, _, _ = eval(dev_loader,
+                                               model,
+                                               epoch,
+                                               i_batch,
+                                               optimizer,
+                                               args)
             i_batch += 1
 
         # Get per-epoch metrics
         epoch_loss = running_loss / len(train_loader.dataset)
         epoch_accuracy = running_corrects.float() / len(train_loader.dataset)
+
         # For live plotting
         logs['log loss'] = epoch_loss.item()
         logs['accuracy'] = epoch_accuracy.item()
@@ -147,18 +151,18 @@ def train(train_loader,
                             file_path)
 
         # Validation
-        validation_loss, validation_accuracy = eval(dev_loader,
-                                                    model,
-                                                    epoch,
-                                                    i_batch,
-                                                    optimizer,
-                                                    args)
+        val_loss, val_acc, val_running_loss, val_running_acc = eval(dev_loader,
+                                                                    model,
+                                                                    epoch,
+                                                                    i_batch,
+                                                                    optimizer,
+                                                                    args)
         # For live plotting
-        logs['val_log loss'] = validation_loss.item()
-        logs['val_accuracy'] = validation_accuracy.item()
+        logs['val_log loss'] = val_running_loss.item()
+        logs['val_accuracy'] = val_running_acc.item()
 
         # Save best validation epoch model
-        if best_acc is None or validation_accuracy > best_acc:
+        if best_acc is None or val_acc > best_acc:
             file_path = '%s/CharCNN_best.pth.tar' % (args.save_folder)
             print("\r=> found better validated model, saving to %s" % file_path)
             save_checkpoint(model,
@@ -166,12 +170,13 @@ def train(train_loader,
                              'optimizer': optimizer.state_dict(),
                              'best_acc': best_acc},
                             file_path)
-            best_acc = validation_accuracy
+            best_acc = val_acc
         print('\n')
 
-        # Plot epoch metrics live
-        liveloss.update(logs)
-        liveloss.draw()
+        if args.plot_live:
+            # Plot epoch metrics live
+            liveloss.update(logs)
+            liveloss.draw()
 
 
 def eval(data_loader,
@@ -184,9 +189,9 @@ def eval(data_loader,
     model.eval()
     corrects, avg_loss, accumulated_loss, size = 0, 0, 0, 0
     predicates_all, target_all = [], []
-    for i_batch, (data) in enumerate(data_loader):
+    for i_batch, data in enumerate(data_loader):
         inputs, target = data
-
+        running_loss = 0.0
         size += len(target)
         if args.cuda:
             inputs, target = inputs.cuda(), target.cuda()
@@ -194,14 +199,24 @@ def eval(data_loader,
         with torch.no_grad():
             inputs = Variable(inputs)
             target = Variable(target)
-            logit = model(inputs)
-            predicates = torch.max(logit, 1)[1].view(target.size()).data
-            accumulated_loss += F.nll_loss(logit, target, size_average=False).data
-            corrects += (torch.max(logit, 1)[1].view(target.size()).data == target.data).sum()
+            estimated_label = model(inputs)
+            predicates = torch.max(estimated_label, 1)[1].view(target.size()).data
+            # Loss
+            loss = F.nll_loss(estimated_label, target)
+            # loss = F.nll_loss(estimated_label, target, size_average=False).data
+            # Running loss updated
+            running_loss += loss.detach() * inputs.size(0)
+            accumulated_loss += loss
+            # Correctly labelled sentences, update total
+            corrects += (torch.max(estimated_label, 1)[1].view(target.size()).data == target.data).sum()
             predicates_all += predicates.cpu().numpy().tolist()
             target_all += target.data.cpu().numpy().tolist()
             if args.cuda:
                 torch.cuda.synchronize()
+
+    # For live plotting
+    epoch_loss = running_loss / len(data_loader.dataset)
+    epoch_accuracy = corrects.float() / len(data_loader.dataset)
 
     avg_loss = accumulated_loss / size
     accuracy = 100.0 * corrects / size
@@ -222,7 +237,7 @@ def eval(data_loader,
                                                             accuracy,
                                                             optimizer.state_dict()['param_groups'][0]['lr']))
 
-    return avg_loss, accuracy
+    return avg_loss, accuracy, epoch_loss, epoch_accuracy
 
 
 def run(args):
