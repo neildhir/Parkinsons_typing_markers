@@ -1,3 +1,4 @@
+import copy
 import re
 import socket
 import warnings
@@ -308,32 +309,28 @@ def combine_characters_to_form_words_at_space(typed_keys: dict,
 
 def backspace_corrector(sentence: list,
                         removal_character='backspace',
+                        invokation_type=1,
                         verbose: bool = False) -> list:
-    """
-    This function invokes the backspaces found in the sentences. Depending on the analysis being done
-    this may or may not be a good idea. Nonetheless, this functions "acts" on thos backspaces.
-
-    Parameters
-    ----------
-    sentence : list
-        List of characters that form the original sentence, with backspaces included
-    removal_character : str, optional
-        This is the character we actually want to remove (the default is 'backspace')
-    verbose : bool, optional
-        Gives a print out of the old and new sentence (the default is False)
-
-    Returns
-    -------
-    list
-        The sentence but with backspaces invoked and removed, along with the corrected characters
-    """
 
     # Want to pass things as list because it easier to work with w.r.t. to strings
     assert isinstance(sentence, list)
+    assert invokation_type in [-1, 0, 1]
+    original_sentence = copy.copy(sentence)
+
     # Check that we are not passing a sentence which only contains backspaces
     if [removal_character] * len(sentence) == sentence:
         # Return an empty list which will get filtered out at the next stage
         return []
+
+    # SPECIAL CASE: WE KEEP THE BACKSPACE AN ENCODE IT AS A CHARACTER FOR USE IN E.G. A charCNN MODEL
+
+    if invokation_type == -1:
+        # In place of 'backspace' we use a pound-sign
+        return ['£' if x == 'backspace' else x for x in sentence]
+
+    # Need to assert that this is given a sequentially ordered array
+    def range_extend(x): return list(np.array(x) - len(x)) + x
+    # Recursive method to remove the leading backspaces
 
     def remove_leading_backspaces(x):
         # Function recursively removes the leading backspace(s) if present
@@ -341,10 +338,17 @@ def backspace_corrector(sentence: list,
             return remove_leading_backspaces(x[1:])
         else:
             return x
-    # Apply to passed sentence
-    sentence = remove_leading_backspaces(sentence)
 
-    # Find the indices of all the remaining, non-leading, backspace occurences
+    # Apply to passed sentence
+    pre_removal_length = len(sentence)
+    sentence = remove_leading_backspaces(sentence)
+    post_removal_length = len(sentence)
+    nr_leading_chars_removed = (pre_removal_length - post_removal_length)
+
+    # Generate coordinates of all items to remove
+    remove_cords = []
+
+    # Find the indices of all the reamaining backspace occurences
     backspace_indices = np.where(np.asarray(sentence) == removal_character)[0]
 
     # Find all singular and contiguous appearances of backspace
@@ -352,24 +356,48 @@ def backspace_corrector(sentence: list,
     for k, g in groupby(enumerate(backspace_indices), lambda ix: ix[0] - ix[1]):
         backspace_groups.append(list(map(itemgetter(1), g)))
 
-    # Generate coordinates of all items to remove
-    remove_cords = []
-    for group in backspace_groups:
-        # A singular backspace
-        if len(group) == 1:
-            remove_cords.extend([group[0]-1, group[0]])
-        else:
-            glen = len(group)
-            mmin = min(group)
-            remove_cords.extend(list(range(mmin-glen, mmin)) + group)
+    if invokation_type == 0:
+        # Remove all characters indicated by 'backspace'
+
+        for group in backspace_groups:
+            # A singular backspace
+            if len(group) == 1:
+                remove_cords.extend([group[0]-1, group[0]])
+
+            else:
+                remove_cords.extend(range_extend(group))
+
+    elif invokation_type == 1:
+        # Remove all characters indicated by 'backspace' _except_ the last character which is kept
+
+        for group in backspace_groups:
+
+            # Solitary backspace removel proceedure
+            if len(group) == 1:
+                remove_cords.extend([group[0]])  # Remove _just_ the backspace and nothing else, don't invoke
+            else:
+                remove_cords.extend(range_extend(group[:-1]))  # This invokes the n-1 backspaces
+                # This remove the nth backspace and the immediately following character
+                remove_cords.extend([group[-1], group[-1]+1])
+
+    else:
+        raise ValueError
+
+    # INVOKE DELETION INDICES
 
     # Do actual deletion
     invoked_sentence = np.delete(sentence, remove_cords).tolist()
     if verbose:
-        print("Original sentence: {}\n".format(sentence))
+        print("Original sentence: {}\n".format(original_sentence))
         print("Edited sentence: {} \n -----".format(invoked_sentence))
 
-    return invoked_sentence
+    if nr_leading_chars_removed == 0:
+        # No leading backspaces found, so we do not have to update the index list
+        return invoked_sentence, remove_cords
+    else:
+        # Update indices to match the originals
+        remove_cords = [i + nr_leading_chars_removed for i in remove_cords]
+        return invoked_sentence, list(range(nr_leading_chars_removed)) + remove_cords
 
 
 def create_dataframe_from_processed_data(my_dict: dict,
