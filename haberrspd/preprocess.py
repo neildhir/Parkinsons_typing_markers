@@ -30,22 +30,23 @@ def create_char_compression_time_mjff_data(df: pd.DataFrame,
     # All sentences will be stored here, indexed by their type
     char_compression_sentences = defaultdict(dict)
 
-    # Function to flatten a list of lists
-    def flatten(l): return [item for sublist in l for item in sublist]
-
     # Loop over subjects
     for subj_idx in subjects:
         # Not all subjects have typed all sentences hence we have to do it this way
         for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
+
+            # "correct" the sentence by operating on user backspaces
+            corrected_sentence, removed_chars_indx = backspace_corrector(
+                df.loc[(df.participant_id == subj_idx) & (df.sentence_id == sent_idx), "key"])
+
+            # Update the compression times for each user given the above operation
+            compression_times = df.loc[(df.participant_id == subj_idx)
+                                       ].reset_index(drop=True).drop(removed_chars_indx)
+
+            # Make long-format version of each typed, corrected, sentence
             char_compression_sentences[subj_idx][sent_idx] = \
-                backspace_corrector(  # Remove backspaces
-                flatten(              # Flatten all list of lists
-                    make_character_compression_time_sentence(df.loc[(df.participant_id == subj_idx)
-                                                                    & (df.sentence_id == sent_idx), "timestamp"],
-                                                             df.loc[(df.participant_id == subj_idx)
-                                                                    & (df.sentence_id == sent_idx), "key"])
-                )
-            )
+                make_character_compression_time_sentence(compression_times,
+                                                         corrected_sentence)
 
     # No one likes an empty list so we remove them here
     for subj_idx in subjects:
@@ -74,18 +75,24 @@ def make_character_compression_time_sentence(compression_times: pd.Series,
         Compression times in milliseconds
     characters : pd.Series
         Individual characters in the typed sentence.
+    indices_removed_backspakces: list
+        List of integer locations at which a backstop was removed from the original sentence
     time_redux_fact : int, optional
         Time reduction factor, to go from milliseconds to something else, by default 10
+        A millisecond is 1/1000 of a second. Convert this to centisecond (1/100s).
 
     Returns
     -------
-    pd.Series
-        Return the a dataframe with header:
+    list
+        Returns a list in which each character has been repeated a number of times.
     """
+
+    # Function to flatten a list of lists
+    def flatten(l): return [item for sublist in l for item in sublist]
+
     assert len(compression_times) == len(characters)
-    # A millisecond is 1/1000 of a second. Convert this to centisecond (1/100s).
     char_times = compression_times.diff().values.astype(int) // time_redux_fact
-    return [[c]*n for c, n in zip(characters[:-1], char_times[1:])]
+    return flatten([[c]*n for c, n in zip(characters[:-1], char_times[1:])])
 
 
 def measure_levensthein_for_lang8_data(data_address: str,
