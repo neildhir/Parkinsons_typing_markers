@@ -35,17 +35,23 @@ def create_char_compression_time_mjff_data(df: pd.DataFrame,
         # Not all subjects have typed all sentences hence we have to do it this way
         for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
 
+            print("subject: {} -- sentence: {}".format(subj_idx, sent_idx))
+
+            # Locate df segment to extract
+            coordinates = (df.participant_id == subj_idx) & (df.sentence_id == sent_idx)
+
             # "correct" the sentence by operating on user backspaces
-            corrected_sentence, removed_chars_indx = backspace_corrector(
-                df.loc[(df.participant_id == subj_idx) & (df.sentence_id == sent_idx), "key"])
+            corrected_sentence, removed_chars_indx = backspace_corrector(df.loc[coordinates, "key"].tolist())
 
             # Update the compression times for each user given the above operation
-            compression_times = df.loc[(df.participant_id == subj_idx)
-                                       ].reset_index(drop=True).drop(removed_chars_indx)
+            tmp_timestamps = df.loc[coordinates, "timestamp"].reset_index(drop=True)
+            assert set(removed_chars_indx).issubset(range(len(tmp_timestamps))
+                                                    ), "Indices to remove: {} -- total length of timestamp vector: {}".format(removed_chars_indx, len(tmp_timestamps))
+            timestamps = tmp_timestamps.drop(index=removed_chars_indx)
 
             # Make long-format version of each typed, corrected, sentence
             char_compression_sentences[subj_idx][sent_idx] = \
-                make_character_compression_time_sentence(compression_times,
+                make_character_compression_time_sentence(timestamps,
                                                          corrected_sentence)
 
     # No one likes an empty list so we remove them here
@@ -90,7 +96,8 @@ def make_character_compression_time_sentence(compression_times: pd.Series,
     # Function to flatten a list of lists
     def flatten(l): return [item for sublist in l for item in sublist]
 
-    assert len(compression_times) == len(characters)
+    assert len(compression_times) == len(characters), "Lengths are: {} and {}".format(
+        len(compression_times), len(characters))
     char_times = compression_times.diff().values.astype(int) // time_redux_fact
     return flatten([[c]*n for c, n in zip(characters[:-1], char_times[1:])])
 
@@ -337,8 +344,8 @@ def backspace_corrector(sentence: list,
 
     # Need to assert that this is given a sequentially ordered array
     def range_extend(x): return list(np.array(x) - len(x)) + x
-    # Recursive method to remove the leading backspaces
 
+    # Recursive method to remove the leading backspaces
     def remove_leading_backspaces(x):
         # Function recursively removes the leading backspace(s) if present
         if x[0] == removal_character:
@@ -383,6 +390,8 @@ def backspace_corrector(sentence: list,
             if len(group) == 1:
                 remove_cords.extend([group[0]])  # Remove _just_ the backspace and nothing else, don't invoke
             else:
+                # XXX: this _may_ introduce negative indices at the start of a sentence
+                # these are filtered out further down
                 remove_cords.extend(range_extend(group[:-1]))  # This invokes the n-1 backspaces
                 # This remove the nth backspace and the immediately following character
                 remove_cords.extend([group[-1], group[-1]+1])
@@ -390,10 +399,13 @@ def backspace_corrector(sentence: list,
     else:
         raise ValueError
 
-    # INVOKE DELETION INDICES
-
+    # Filter out negative indices which are non-sensical for deletion (arises when more backspaces than characters in beginning of sentence)
+    remove_cords = list(filter(lambda x: x >= 0, remove_cords))
+    # Filter out deletion indices which appear at the end of the sentence as part of a contiguous group of backspaces
+    remove_cords = list(filter(lambda x: x < len(original_sentence), remove_cords))
     # Do actual deletion
     invoked_sentence = np.delete(sentence, remove_cords).tolist()
+
     if verbose:
         print("Original sentence: {}\n".format(original_sentence))
         print("Edited sentence: {} \n -----".format(invoked_sentence))
