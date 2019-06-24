@@ -12,14 +12,57 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from .__init_paths import data_root
+from scipy.stats import (gamma, lognorm, gengamma)
 
 
 def sentence_level_pause_correction(df):
     pass
 
 
-def subject_level_pause_correction(df):
-    pass
+def subject_level_pause_correction(df,
+                                   char_count_response_threshold=40,
+                                   cut_off_percentile=0.99,
+                                   correction_model='gengamma'):
+    assert 'sentence_text' in df.columns
+    assert 'participant_id' in df.columns
+    # Here we filter out responses where the number of characters per typed
+    # response, is below a threshold value (40 by default)
+    assert "response_id" in df.columns
+    df = df.groupby('response_id').filter(lambda x: x['response_id'].count() > char_count_response_threshold)
+
+    # Get the unique number of subjects
+    subjects = sorted(set(df.participant_id))  # NOTE: set() is weakly random
+    sentences = sorted(set(df.sentence_id))  # NOTE: set() is weakly random
+
+    # Store corrected sentences here
+    pause_corrected_sentences = defaultdict(dict)
+
+    # Response time modelling
+    pause_funcs = {'gengamma': gengamma.fit, 'lognorm': lognorm.fit, 'gamma': gamma.fit}
+    pause_cut_off_val = {'gengamma': gengamma.ppf, 'lognorm': lognorm.ppf, 'gamma': gamma.ppf}
+    pause_replacement_val = {'gengamma': gengamma.mean, 'lognorm': lognorm.mean, 'gamma': gamma.mean}
+
+    # Loop over all sentences
+    for sent in sentences:
+        timestamp_diffs = []
+        # Loop over all subjects
+        for sub in subjects:
+            # Get all delta timestamps for this sentence, across all subjects
+            timestamp_diffs.extend(df.loc[(df.sentence_id == sent) & (
+                df.participant_id == sub)].timestamp.diff().values)
+
+        # Move to numpy array for easier computation
+        x = np.array(timestamp_diffs)
+
+        # Remove all nans
+        x = x[~np.isnan(x)]
+
+        # Fit suitable density for modelling correct non-pause value
+        params_MLE = pause_funcs[correction_model](x)
+        cut_off_value = pause_cut_off_val[correction_model](*((cut_off_percentile,) + params_MLE))
+        replacement_value = pause_replacement_val[correction_model](*params_MLE)
+
+        # Search all delta timestamps and replace which exeed cut_off_value
 
 
 def create_char_compression_time_mjff_data(df: pd.DataFrame,
