@@ -14,6 +14,14 @@ from sklearn.model_selection import train_test_split
 from .__init_paths import data_root
 
 
+def sentence_level_pause_correction(df):
+    pass
+
+
+def subject_level_pause_correction(df):
+    pass
+
+
 def create_char_compression_time_mjff_data(df: pd.DataFrame,
                                            char_count_response_threshold=40) -> Tuple[dict, list]:
     assert 'sentence_text' in df.columns
@@ -338,7 +346,7 @@ def backspace_corrector(sentence: list,
 
     if invokation_type == -1:
         # In place of 'backspace' we use a pound-sign
-        return ['£' if x == 'backspace' else x for x in sentence]
+        return ['£' if x == removal_character else x for x in sentence], None
 
     # Need to assert that this is given a sequentially ordered array
     def range_extend(x): return list(np.array(x) - len(x)) + x

@@ -1,7 +1,9 @@
 import unittest
 
 import pandas as pd
-from haberrspd.preprocess import make_character_compression_time_sentence, backspace_corrector
+
+from haberrspd.preprocess import (backspace_corrector,
+                                  make_character_compression_time_sentence)
 
 
 class TestPreprocessing(unittest.TestCase):
@@ -12,11 +14,46 @@ class TestPreprocessing(unittest.TestCase):
         self.base_sequence = list('pesto')
         self.raw_character_sequence = pd.Series(self.base_sequence)
         self.raw_timestamps = pd.Series([2, 4, 5, 8, 10])
+
+        error = 'backspace'
+
         # Sequences with leading and trailing backspaces
-        self.backspace_error_one = ['backspace'] + self.base_sequence
-        self.backspace_error_two = self.base_sequence + ['backspace']
-        self.backspace_error_three = 2 * ['backspace'] + self.base_sequence
-        self.backspace_error_four = self.base_sequence + 2 * ['backspace']
+        self.backspace_error_one = [error] + self.base_sequence
+        self.backspace_error_two = self.base_sequence + [error]
+        self.backspace_error_three = 2 * [error] + self.base_sequence
+        self.backspace_error_four = self.base_sequence + 2 * [error]
+
+        # More complex error sequences
+        # Clean: 'pesto tastes very nice'
+        self.complex_error_one = ['p',
+                                  'e',
+                                  'backspace',
+                                  'backspace',
+                                  'backspace',
+                                  's',
+                                  't',
+                                  'o',
+                                  ' ',
+                                  't',
+                                  'backspace',
+                                  'a',
+                                  's',
+                                  't',
+                                  'e',
+                                  's',
+                                  ' ',
+                                  'v',
+                                  'e',
+                                  'r',
+                                  'y',
+                                  ' ',
+                                  'n',
+                                  'i',
+                                  'c',
+                                  'e',
+                                  'backspace',
+                                  'backspace',
+                                  'backspace']
 
     def test_long_format_construction(self):
         """
@@ -37,10 +74,10 @@ class TestPreprocessing(unittest.TestCase):
         """
 
         # Single leading backspace
-        output, indices = backspace_corrector(self.backspace_error_one)
+        output, _ = backspace_corrector(self.backspace_error_one)
         self.assertEqual(output, self.base_sequence)
-        # Single leading backspace
-        output, indices = backspace_corrector(self.backspace_error_three)
+        # Multiple leading backspace
+        output, _ = backspace_corrector(self.backspace_error_three)
         self.assertEqual(output, self.base_sequence)
 
     def test_leading_trailing_removal(self):
@@ -49,11 +86,27 @@ class TestPreprocessing(unittest.TestCase):
         """
 
         # Single leading backspace
-        output, indices = backspace_corrector(self.backspace_error_two)
+        output, _ = backspace_corrector(self.backspace_error_two)
         self.assertEqual(output, self.base_sequence)
-        # Single leading backspace
-        output, indices = backspace_corrector(self.backspace_error_four)
+        # Multiple trailing backspaces
+        output, _ = backspace_corrector(self.backspace_error_four)
+        # Output == ['p','e','s','t']
         self.assertEqual(output, self.base_sequence[:-1])
+
+    def test_compound_error_sequence(self):
+        """
+        Test a complex sequence of characters and backspaces.
+        """
+        output, indices = backspace_corrector(self.complex_error_one)
+        self.assertEqual(output, list('to tastes very ni'))
+        # Check that deletion indices are correct
+        self.assertEqual(indices, [0, 1, 2, 3, 4, 5, 10, 24, 25, 26, 27, 28])
+
+    def test_backspace_replacement(self):
+        output, _ = backspace_corrector(self.backspace_error_one, invokation_type=-1)
+        self.backspace_error_one[0] = '£'
+        # Should return a sequence in which the backspace has been replaced with a £ char.
+        self.assertEqual(output, self.backspace_error_one)
 
 
 if __name__ == '__main__':
