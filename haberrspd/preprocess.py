@@ -35,7 +35,7 @@ def create_char_compression_time_mjff_data(df: pd.DataFrame,
         # Not all subjects have typed all sentences hence we have to do it this way
         for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
 
-            print("subject: {} -- sentence: {}".format(subj_idx, sent_idx))
+            # print("subject: {} -- sentence: {}".format(subj_idx, sent_idx))
 
             # Locate df segment to extract
             coordinates = (df.participant_id == subj_idx) & (df.sentence_id == sent_idx)
@@ -81,8 +81,6 @@ def make_character_compression_time_sentence(compression_times: pd.Series,
         Compression times in milliseconds
     characters : pd.Series
         Individual characters in the typed sentence.
-    indices_removed_backspakces: list
-        List of integer locations at which a backstop was removed from the original sentence
     time_redux_fact : int, optional
         Time reduction factor, to go from milliseconds to something else, by default 10
         A millisecond is 1/1000 of a second. Convert this to centisecond (1/100s).
