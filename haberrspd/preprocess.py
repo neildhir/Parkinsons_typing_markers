@@ -39,8 +39,11 @@ def subject_level_pause_correction(df,
 
     # Response time modelling
     pause_funcs = {'gengamma': gengamma.fit, 'lognorm': lognorm.fit, 'gamma': gamma.fit}
-    pause_cut_off_val = {'gengamma': gengamma.ppf, 'lognorm': lognorm.ppf, 'gamma': gamma.ppf}
-    pause_replacement_val = {'gengamma': gengamma.mean, 'lognorm': lognorm.mean, 'gamma': gamma.mean}
+    pause_funcs_cut_off_quantile = {'gengamma': gengamma.ppf, 'lognorm': lognorm.ppf, 'gamma': gamma.ppf}
+    pause_first_moment = {'gengamma': gengamma.mean, 'lognorm': lognorm.mean, 'gamma': gamma.mean}
+
+    # Storage for critical values
+    pause_replacement_stats = {}
 
     # Loop over all sentences
     for sent in sentences:
@@ -59,10 +62,13 @@ def subject_level_pause_correction(df,
 
         # Fit suitable density for modelling correct non-pause value
         params_MLE = pause_funcs[correction_model](x)
-        cut_off_value = pause_cut_off_val[correction_model](*((cut_off_percentile,) + params_MLE))
-        replacement_value = pause_replacement_val[correction_model](*params_MLE)
+        cut_off_value = pause_funcs_cut_off_quantile[correction_model](*((cut_off_percentile,) + params_MLE))
+        replacement_value = pause_first_moment[correction_model](*params_MLE)
 
-        # Search all delta timestamps and replace which exeed cut_off_value
+        # Store for replacement operation in next loop
+        pause_replacement_stats[sent] = (cut_off_value, replacement_value)
+
+    # Search all delta timestamps and replace which exeed cut_off_value
 
 
 def create_char_compression_time_mjff_data(df: pd.DataFrame,
