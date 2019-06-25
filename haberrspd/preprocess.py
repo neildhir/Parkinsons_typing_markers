@@ -15,14 +15,11 @@ from .__init_paths import data_root
 from scipy.stats import (gamma, lognorm, gengamma)
 
 
-def sentence_level_pause_correction(df):
-    pass
+def sentence_level_pause_correction(df,
+                                    char_count_response_threshold=40,
+                                    cut_off_percentile=0.99,
+                                    correction_model='gengamma'):
 
-
-def subject_level_pause_correction(df,
-                                   char_count_response_threshold=40,
-                                   cut_off_percentile=0.99,
-                                   correction_model='gengamma'):
     assert 'sentence_text' in df.columns
     assert 'participant_id' in df.columns
     # Here we filter out responses where the number of characters per typed
@@ -30,12 +27,13 @@ def subject_level_pause_correction(df,
     assert "response_id" in df.columns
     df = df.groupby('response_id').filter(lambda x: x['response_id'].count() > char_count_response_threshold)
 
-    # Get the unique number of subjects
+    # Get the unique number of participants (control AND pd)
     subjects = sorted(set(df.participant_id))  # NOTE: set() is weakly random
+    # Sentence identifiers
     sentences = sorted(set(df.sentence_id))  # NOTE: set() is weakly random
 
     # Store corrected sentences here
-    pause_corrected_sentences = defaultdict(dict)
+    corrected_timestamp_diff = defaultdict(dict)
 
     # Response time modelling
     pause_funcs = {'gengamma': gengamma.fit, 'lognorm': lognorm.fit, 'gamma': gamma.fit}
@@ -51,8 +49,11 @@ def subject_level_pause_correction(df,
         # Loop over all subjects
         for sub in subjects:
             # Get all delta timestamps for this sentence, across all subjects
-            timestamp_diffs.extend(df.loc[(df.sentence_id == sent) & (
-                df.participant_id == sub)].timestamp.diff().values)
+            tmp = df.loc[(df.sentence_id == sent) & (df.participant_id == sub)].timestamp.diff().tolist()
+            # Store for later
+            corrected_timestamp_diff[sent][sub] = tmp
+            # Append to get statistics over all participants
+            timestamp_diffs.extend(tmp)
 
         # Move to numpy array for easier computation
         x = np.array(timestamp_diffs)
@@ -60,7 +61,7 @@ def subject_level_pause_correction(df,
         # Remove all nans
         x = x[~np.isnan(x)]
 
-        # Fit suitable density for modelling correct non-pause value
+        # Fit suitable density for modelling correct replacement value
         params_MLE = pause_funcs[correction_model](x)
         cut_off_value = pause_funcs_cut_off_quantile[correction_model](*((cut_off_percentile,) + params_MLE))
         replacement_value = pause_first_moment[correction_model](*params_MLE)
@@ -69,6 +70,16 @@ def subject_level_pause_correction(df,
         pause_replacement_stats[sent] = (cut_off_value, replacement_value)
 
     # Search all delta timestamps and replace which exeed cut_off_value
+    for sent in sentences:
+        for sub in subjects:
+
+            # Make temporary conversion to numpy array (remove the first entry as it is a NaN)
+            x = np.array(corrected_timestamp_diff[sent][sub])[1:]
+            corrected_timestamp_diff[sent][sub] = \
+                pd.Series(np.where(x > pause_replacement_stats[sent][0],
+                                   pause_replacement_stats[sent][1], x).astype(int))
+
+    return corrected_timestamp_diff
 
 
 def create_char_compression_time_mjff_data(df: pd.DataFrame,
@@ -87,6 +98,10 @@ def create_char_compression_time_mjff_data(df: pd.DataFrame,
     # All sentences will be stored here, indexed by their type
     char_compression_sentences = defaultdict(dict)
 
+    # Get the updated compression times
+    corrected_compression_times = sentence_level_pause_correction(
+        df, char_count_response_threshold=char_count_response_threshold)
+
     # Loop over subjects
     for subj_idx in subjects:
         # Not all subjects have typed all sentences hence we have to do it this way
@@ -98,18 +113,20 @@ def create_char_compression_time_mjff_data(df: pd.DataFrame,
             coordinates = (df.participant_id == subj_idx) & (df.sentence_id == sent_idx)
 
             # "correct" the sentence by operating on user backspaces
-            corrected_sentence, removed_chars_indx = backspace_corrector(df.loc[coordinates, "key"].tolist())
+            corrected_char_sentence, removed_chars_indx = backspace_corrector(df.loc[coordinates, "key"].tolist())
 
-            # Update the compression times for each user given the above operation
-            tmp_timestamps = df.loc[coordinates, "timestamp"].reset_index(drop=True)
-            assert set(removed_chars_indx).issubset(range(len(tmp_timestamps))
-                                                    ), "Indices to remove: {} -- total length of timestamp vector: {}".format(removed_chars_indx, len(tmp_timestamps))
-            timestamps = tmp_timestamps.drop(index=removed_chars_indx)
+            # Re-index the removed indices since we have dropped the first entry.
+            removed_chars_indx = [x - 1 for x in removed_chars_indx]
+
+            L = len(corrected_compression_times[sent_idx][subj_idx])
+            assert set(removed_chars_indx).issubset(
+                range(L)), "Indices to remove: {} -- total length of timestamp vector: {}".format(removed_chars_indx, L)
+            compression_times = corrected_compression_times[sent_idx][subj_idx].drop(index=removed_chars_indx)
 
             # Make long-format version of each typed, corrected, sentence
             char_compression_sentences[subj_idx][sent_idx] = \
-                make_character_compression_time_sentence(timestamps,
-                                                         corrected_sentence)
+                make_character_compression_time_sentence(compression_times,
+                                                         corrected_char_sentence)
 
     # No one likes an empty list so we remove them here
     for subj_idx in subjects:
@@ -153,8 +170,12 @@ def make_character_compression_time_sentence(compression_times: pd.Series,
 
     assert len(compression_times) == len(characters), "Lengths are: {} and {}".format(
         len(compression_times), len(characters))
-    char_times = compression_times.diff().values.astype(int) // time_redux_fact
-    return flatten([[c]*n for c, n in zip(characters[:-1], char_times[1:])])
+
+    # TODO: need to redo this to take into account the pause-replacement operation
+    # char_times = compression_times.diff().values.astype(int) // time_redux_fact
+    # return flatten([[c]*n for c, n in zip(characters[:-1], char_times[1:])])
+    char_times = compression_times // time_redux_fact
+    return flatten([[c]*n for c, n in zip(characters[:-1], char_times)])
 
 
 def measure_levensthein_for_lang8_data(data_address: str,
