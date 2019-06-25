@@ -124,9 +124,10 @@ def create_char_compression_time_mjff_data(df: pd.DataFrame,
             compression_times = corrected_compression_times[sent_idx][subj_idx].drop(index=removed_chars_indx)
 
             # Make long-format version of each typed, corrected, sentence
+            # Note that we remove the last character to make the calculation correct.
             char_compression_sentences[subj_idx][sent_idx] = \
                 make_character_compression_time_sentence(compression_times,
-                                                         corrected_char_sentence)
+                                                         corrected_char_sentence[:-1])
 
     # No one likes an empty list so we remove them here
     for subj_idx in subjects:
@@ -175,7 +176,7 @@ def make_character_compression_time_sentence(compression_times: pd.Series,
     # char_times = compression_times.diff().values.astype(int) // time_redux_fact
     # return flatten([[c]*n for c, n in zip(characters[:-1], char_times[1:])])
     char_times = compression_times // time_redux_fact
-    return flatten([[c]*n for c, n in zip(characters[:-1], char_times)])
+    return flatten([[c]*n for c, n in zip(characters, char_times)])
 
 
 def measure_levensthein_for_lang8_data(data_address: str,
