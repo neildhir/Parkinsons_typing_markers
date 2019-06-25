@@ -3,7 +3,8 @@ import unittest
 import pandas as pd
 
 from haberrspd.preprocess import (backspace_corrector,
-                                  make_character_compression_time_sentence)
+                                  make_character_compression_time_sentence,
+                                  sentence_level_pause_correction)
 
 
 class TestPreprocessing(unittest.TestCase):
@@ -54,6 +55,14 @@ class TestPreprocessing(unittest.TestCase):
                                   'backspace',
                                   'backspace',
                                   'backspace']
+
+        self.df_small = pd.DataFrame(
+            {'timestamp': [1, 4, 7, 2, 5, 8, 2, 4, 9, 3, 5, 8],
+             'key': list('car') + list('toy') + list('car') + list('toy'),
+             'participant_id': ['1a'] * 6 + ['2a'] * 6,
+             'sentence_id': [1] * 3 + [2] * 3 + [1] * 3 + [2] * 3
+             }
+        )
 
     def test_long_format_construction(self):
         """
@@ -107,6 +116,9 @@ class TestPreprocessing(unittest.TestCase):
         self.backspace_error_one[0] = '£'
         # Should return a sequence in which the backspace has been replaced with a £ char.
         self.assertEqual(output, self.backspace_error_one)
+
+    def test_response_time_correction(self):
+        pass
 
 
 if __name__ == '__main__':

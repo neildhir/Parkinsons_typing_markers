@@ -20,12 +20,11 @@ def sentence_level_pause_correction(df,
                                     cut_off_percentile=0.99,
                                     correction_model='gengamma') -> Tuple[dict, list]:
 
-    assert 'sentence_text' in df.columns
-    assert 'participant_id' in df.columns
-    # Here we filter out responses where the number of characters per typed
+    assert set(['participant_id', 'key', 'timestamp', 'sentence_id']).issubset(df.columns)
+    # Filter out responses where the number of characters per typed
     # response, is below a threshold value (40 by default)
-    assert "response_id" in df.columns
-    df = df.groupby('response_id').filter(lambda x: x['response_id'].count() > char_count_response_threshold)
+    df = df.groupby('sentence_id').filter(lambda x: x['sentence_id'].count() > char_count_response_threshold)
+    assert not df.empty
 
     # Get the unique number of participants (control AND pd)
     subjects = sorted(set(df.participant_id))  # NOTE: set() is weakly random
@@ -95,12 +94,12 @@ def sentence_level_pause_correction(df,
 
 def create_char_compression_time_mjff_data(df: pd.DataFrame,
                                            char_count_response_threshold=40) -> Tuple[dict, list]:
-    assert 'sentence_text' in df.columns
-    assert 'participant_id' in df.columns
-    # Here we filter out responses where the number of characters per typed
+
+    assert set(['participant_id', 'key', 'timestamp', 'sentence_id']).issubset(df.columns)
+    # Filter out responses where the number of characters per typed
     # response, is below a threshold value (40 by default)
-    assert "response_id" in df.columns
-    df = df.groupby('response_id').filter(lambda x: x['response_id'].count() > char_count_response_threshold)
+    df = df.groupby('sentence_id').filter(lambda x: x['sentence_id'].count() > char_count_response_threshold)
+    assert not df.empty
 
     # Get the unique number of subjects
     subjects = sorted(set(df.participant_id))  # NOTE: set() is weakly random
