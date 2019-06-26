@@ -57,17 +57,21 @@ def sentence_level_pause_correction(df,
         # Move to numpy array for easier computation
         x = np.array(timestamp_diffs)
 
-        # Remove all nans
+        # Remove all NANs and remove all NEGATIVE values
         x = x[~np.isnan(x)]
+        # Have to do in two operations because of NaN presence
+        x = x[x > 0.]
 
         # Fit suitable density for modelling correct replacement value
         params_MLE = pause_funcs[correction_model](x)
+
         # Set cut off value
         cut_off_value = pause_funcs_cut_off_quantile[correction_model](*((cut_off_percentile,) + params_MLE))
-        assert cut_off_value > 0, cut_off_value
+        assert cut_off_value > 0, "INFO:\n\t value: {} \n\t sentence ID: {}".format(cut_off_value, sent)
+
         # Set replacement value
         replacement_value = pause_first_moment[correction_model](*params_MLE)
-        assert replacement_value > 0, replacement_value
+        assert replacement_value > 0, "INFO:\n\t value: {} \n\t sentence ID: {}".format(replacement_value, sent)
 
         # Store for replacement operation in next loop
         pause_replacement_stats[sent] = (cut_off_value, replacement_value)
@@ -84,7 +88,8 @@ def sentence_level_pause_correction(df,
                     np.concatenate(  # Add back NaN to maintain index order
                         (
                             [np.nan],
-                            np.where(x > pause_replacement_stats[sent][0],
+                            # Two conditions are used here
+                            np.where(np.logical_or(x > pause_replacement_stats[sent][0], x < 0),
                                      pause_replacement_stats[sent][1],
                                      x)
                         )
@@ -531,15 +536,15 @@ def create_dataframe_from_processed_data(my_dict: dict,
     """
 
     final_out = []
-    for patient_id in my_dict.keys():
+    for participant_id in my_dict.keys():
         final_out.append(
             pd.DataFrame(
                 [
-                    [patient_id,
+                    [participant_id,
                      # This row selects the diagnosis of the patient
-                     int(df_meta.loc[df_meta['index'] == patient_id, df_meta.columns[-1]]),  # ['diagnosis']),
+                     int(df_meta.loc[df_meta.participant_id == participant_id].diagnosis),
                      sent_id,
-                     my_dict[patient_id][sent_id]] for sent_id in my_dict[patient_id].keys()
+                     my_dict[participant_id][sent_id]] for sent_id in my_dict[participant_id].keys()
                 ]
             )
         )
@@ -554,7 +559,7 @@ def create_dataframe_from_processed_data(my_dict: dict,
     return df
 
 
-def create_long_form_NLP_datasets_from_MJFF_English_data(use_mechanical_turk=False):
+def create_long_form_English_MJFF_dataset():
     """
     End-to-end creation of raw data to NLP readable train and test sets.
 
@@ -564,26 +569,15 @@ def create_long_form_NLP_datasets_from_MJFF_English_data(use_mechanical_turk=Fal
         Processed dataframe
     """
 
-    # Pre-select columns to use
-    meta_cols = ['index', 'diagnosis']
     data_cols = ['timestamp', 'key', 'response_id', 'response_created', 'participant_id',
                  'sentence_id', 'sentence_text']
 
-    # Raw data
+    # Load raw text and meta data
     df = pd.read_csv(data_root / 'EnglishData.csv', usecols=data_cols)
-    df_meta = pd.read_csv(data_root / "EnglishParticipantKey.csv", usecols=meta_cols)
-
-    # If we want to use MT as well
-    if use_mechanical_turk:
-        df_mt = pd.read_csv(data_root / 'MechanicalTurkCombinedEnglishData.csv',
-                            dtype={'participant_id': str})
-        df_meta_mt = pd.read_csv(data_root / "MechanicalTurkEnglishParticipantKey.csv")
-        # Change type to match other meta data
-        assert all(df.columns == df_mt.columns)
-        assert all(df_meta.columns == df_meta_mt.columns)
-        # Combine
-        df = pd.concat([df, df_mt]).reset_index(drop=True)
-        df_meta = pd.concat([df_meta, df_meta_mt]).reset_index(drop=True)
+    df_meta = pd.read_csv(data_root / "EnglishParticipantKey.csv",
+                          header=0,
+                          names=['participant_id', 'ID', 'attempt', 'diagnosis'],
+                          usecols=['participant_id', 'diagnosis'])
 
     # Creates long sequences with characters repeated for IKI number of steps
     out = create_char_compression_time_mjff_data(df)

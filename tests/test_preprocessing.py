@@ -1,8 +1,8 @@
+import itertools
 import unittest
 
-import pandas as pd
 import numpy as np
-import itertools
+import pandas as pd
 
 from haberrspd.preprocess import (backspace_corrector,
                                   make_character_compression_time_sentence,
