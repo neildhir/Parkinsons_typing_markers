@@ -62,8 +62,10 @@ def sentence_level_pause_correction(df,
 
         # Fit suitable density for modelling correct replacement value
         params_MLE = pause_funcs[correction_model](x)
+        # Set cut off value
         cut_off_value = pause_funcs_cut_off_quantile[correction_model](*((cut_off_percentile,) + params_MLE))
         assert cut_off_value > 0, cut_off_value
+        # Set replacement value
         replacement_value = pause_first_moment[correction_model](*params_MLE)
         assert replacement_value > 0, replacement_value
 

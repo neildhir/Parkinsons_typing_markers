@@ -1,6 +1,8 @@
 import unittest
 
 import pandas as pd
+import numpy as np
+import itertools
 
 from haberrspd.preprocess import (backspace_corrector,
                                   make_character_compression_time_sentence,
@@ -14,7 +16,7 @@ class TestPreprocessing(unittest.TestCase):
         # Test cases
         self.base_sequence = list('pesto')
         self.raw_character_sequence = pd.Series(self.base_sequence)
-        self.raw_timestamps = pd.Series([2, 4, 5, 8, 10])
+        self.compression_times = pd.Series([1., 2., 2., 4., 3.])
 
         error = 'backspace'
 
@@ -56,22 +58,32 @@ class TestPreprocessing(unittest.TestCase):
                                   'backspace',
                                   'backspace']
 
-        self.df_small = pd.DataFrame(
-            {'timestamp': [1, 4, 7, 2, 5, 8, 2, 4, 9, 3, 5, 8],
-             'key': list('car') + list('toy') + list('car') + list('toy'),
-             'participant_id': ['1a'] * 6 + ['2a'] * 6,
-             'sentence_id': [1] * 3 + [2] * 3 + [1] * 3 + [2] * 3
-             }
+        # Dataframe objects for tests
+        test_keys = ['liverpool', 'barcelona']  # change any word but don't add words
+        self.df = pd.DataFrame(
+            {
+                'timestamp': np.hstack([
+                    np.linspace(1, 15, len(test_keys[0]), dtype=int),
+                    np.linspace(1, 25, len(test_keys[1]), dtype=int),
+                    np.linspace(1, 17, len(test_keys[0]), dtype=int),
+                    np.linspace(1, 33, len(test_keys[0]), dtype=int),
+                ]),
+                'key': list(''.join(map(str, test_keys*2))),
+                'participant_id': ['1a'] * len(test_keys[0]+test_keys[1]) + ['2a'] * len(test_keys[0]+test_keys[1]),
+                'sentence_id': list(itertools.chain(*[[x]*y for x, y in zip([0, 1], [len(test_keys[0]), len(test_keys[1])])]*2))
+            }
         )
+        # Add a special timestamp to test if the response-time outlier replacement works
+        self.df.iloc[-1, 0] = 1000
 
     def test_long_format_construction(self):
         """
         Long-format character construction should be done correctly.
         This test ensure that the construction is commensurate with the intention.
         """
-        target = list('ppessstt')  # Expected output
+        target = list('ppeessssttt')  # Expected output
         output = make_character_compression_time_sentence(
-            self.raw_timestamps,
+            self.compression_times,
             self.raw_character_sequence,
             time_redux_fact=1)
         # Test assertion
@@ -118,7 +130,21 @@ class TestPreprocessing(unittest.TestCase):
         self.assertEqual(output, self.backspace_error_one)
 
     def test_response_time_correction(self):
-        pass
+        """
+        This function tests the response-time correction functionality. Subjects pause
+        when they type (sometimes), this causes irregularities in the natural response-time
+        distribution of natural typing. This function tests if our filter/replacement
+        procedure, produces the correct values.
+        """
+
+        # Invoke correction method, keeping all defaults but one
+        out = sentence_level_pause_correction(self.df, char_count_response_threshold=3)
+
+        self.assertEqual(out[0]['1a'].all(), pd.Series([np.nan, 1.0, 2.0, 2.0, 2.0, 1.0, 2.0, 2.0, 2.0]).all())
+        self.assertEqual(out[1]['1a'].all(), pd.Series([np.nan, 3., 3., 3., 3., 3., 3., 3., 3.]).all())
+        self.assertEqual(out[0]['2a'].all(), pd.Series([np.nan, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]).all())
+        # Check that the outlier value has been sufficiently replaced
+        self.assertGreater(self.df.iloc[-1, 0], out[1]['2a'].iloc[-1])
 
 
 if __name__ == '__main__':
