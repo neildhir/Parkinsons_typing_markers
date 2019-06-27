@@ -15,6 +15,34 @@ from .__init_paths import data_root
 from scipy.stats import (gamma, lognorm, gengamma)
 
 
+class preprocessMJFF:
+    """
+    Governing class with which the user will interface.
+    All the heavy lifting happens under the hood.
+    """
+
+    def __init__(self, get):
+        assert get in ['english', 'spanish', 'all'], "You must pass a valid option."
+        self.get_which_data = get
+
+    def __call__(self):
+
+        if self.get_which_data == 'all':
+            # Load English MJFF data
+            df_english, _ = create_long_form_MJFF_dataset('english')
+            # Load Spanish MJFF data
+            df_spanish, _ = create_long_form_MJFF_dataset('spanish')
+            # Merge datasets
+
+        elif self.get_which_data == 'english':
+            # Load English MJFF data
+            df, _ = create_long_form_MJFF_dataset('english')
+
+        elif self.get_which_data == 'spanish':
+            # Load English MJFF data
+            df, _ = create_long_form_MJFF_dataset('spanish')
+
+
 def sentence_level_pause_correction(df,
                                     char_count_response_threshold=40,
                                     cut_off_percentile=0.99,
