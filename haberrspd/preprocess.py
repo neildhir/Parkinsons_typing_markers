@@ -559,9 +559,14 @@ def create_dataframe_from_processed_data(my_dict: dict,
     return df
 
 
-def create_long_form_English_MJFF_dataset():
+def create_long_form_MJFF_dataset(language='english') -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     End-to-end creation of raw data to NLP readable train and test sets.
+
+    Parameters
+    ----------
+    langauge : str
+        Select which language should be preprocessed.
 
     Returns
     -------
@@ -569,15 +574,22 @@ def create_long_form_English_MJFF_dataset():
         Processed dataframe
     """
 
-    data_cols = ['timestamp', 'key', 'response_id', 'response_created', 'participant_id',
-                 'sentence_id', 'sentence_text']
-
     # Load raw text and meta data
-    df = pd.read_csv(data_root / 'EnglishData.csv', usecols=data_cols)
-    df_meta = pd.read_csv(data_root / "EnglishParticipantKey.csv",
-                          header=0,
-                          names=['participant_id', 'ID', 'attempt', 'diagnosis'],
-                          usecols=['participant_id', 'diagnosis'])
+    if language == 'english':
+        df = pd.read_csv(data_root / 'EnglishData.csv')
+        df_meta = pd.read_csv(data_root / "EnglishParticipantKey.csv",
+                              header=0,
+                              names=['participant_id', 'ID', 'attempt', 'diagnosis'],
+                              usecols=['participant_id', 'diagnosis'])
+    elif language == 'spanish':
+        df = pd.read_csv(data_root / 'SpanishData.csv')
+        df_meta = pd.read_csv(data_root / "SpanishParticipantKey.csv",
+                              header=0,
+                              names=['participant_id', 'diagnosis'])
+        # 'correct' Spanish characters
+        df = create_proper_spanish_letters(df)
+    else:
+        raise ValueError
 
     # Creates long sequences with characters repeated for IKI number of steps
     out = create_char_compression_time_mjff_data(df)
@@ -699,32 +711,34 @@ def create_proper_spanish_letters(df: pd.DataFrame) -> pd.DataFrame:
         Corrected characters used in sentences
     """
 
-    special_spanish_substrings = ["´", "~", '"']
+    assert set(['participant_id', 'key', 'timestamp', 'sentence_id']).issubset(df.columns)
+    special_spanish_characters = ["´", "~", '"']
     char_unicodes = [u'\u0301', u'\u0303', u'\u0308']
-    unicode_dict = dict(zip(special_spanish_substrings, char_unicodes))
+    unicode_dict = dict(zip(special_spanish_characters, char_unicodes))
 
-    for sent_idx in df.index:
-        sentence = df.loc[sent_idx, 'Preprocessed_typed_sentence']
-        # Check if there are any special characters present
-        if any(substring in sentence for substring in special_spanish_substrings):
-            # Special chars are found
+    # Get the unique number of participants (control AND pd)
+    subjects = sorted(set(df.participant_id))  # NOTE: set() is weakly random
+    # Sentence identifiers
+    sentences = sorted(set(df.sentence_id))  # NOTE: set() is weakly random
+    # Loop over all sentences
+    for sent in sentences:
+        # Loop over all subjects
+        for sub in subjects:
+            # Get typed sentence
+            typed_characters = df.loc[(df.participant_id == sub) & (df.sentence_id == sent)].key.values
+            typed_chars_index = df.loc[(df.participant_id == sub) & (df.sentence_id == sent)].index
+            if any(c in special_spanish_characters for c in typed_characters):
+                # Check which character is present in the typed sentence
+                for char in special_spanish_characters:
+                    if char in typed_characters:
+                        # At these coordinates the _singular_ special chars live
+                        coordinates_to_remove = np.where(typed_characters == char)[0]
+                        # Assign the proper Spanish character in the dataframe
+                        for i in coordinates_to_remove:
+                            df.loc[typed_chars_index[i+1], 'key'] = typed_characters[i+1] + unicode_dict[char]
+                        # Drop the singular characters in place
+                        df.drop(typed_chars_index[coordinates_to_remove], inplace=True)
 
-            # Check which substring is present
-            for substring in special_spanish_substrings:
-                if substring in sentence:
-                    # Get coordinates of all substrings like this
-                    cords = [sentence.start() for sentence in re.finditer(substring, sentence)]
-                    # Create the proper Spanish letters at these coordinates
-                    # assumption of this operation is that the special character comes before
-                    # the concatenating character.
-
-                    # Convert str to a mutable object so we can operate upon it
-                    lst_str = list(sentence)
-                    # Update the 'string'
-                    for i in cords:
-                        lst_str[i] = lst_str[i+1] + unicode_dict[substring]
-                    # Delete superfluos character and Convert back to immutable object i.e. a string
-                    df.loc[sent_idx, 'Preprocessed_typed_sentence'] = ''.join(np.delete(lst_str, np.array(cords)+1))
     return df
 
 
