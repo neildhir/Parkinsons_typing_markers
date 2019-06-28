@@ -21,26 +21,47 @@ class preprocessMJFF:
     All the heavy lifting happens under the hood.
     """
 
-    def __init__(self, get):
-        assert get in ['english', 'spanish', 'all'], "You must pass a valid option."
-        self.get_which_data = get
+    def __init__(self):
+        print('\tMichael J. Fox Foundation PD copy-typing data.\n')
 
-    def __call__(self):
+    def __call__(self, get_language: str = 'english') -> pd.DataFrame:
 
-        if self.get_which_data == 'all':
+        assert get_language in ['english', 'spanish', 'all'], "You must pass a valid option."
+
+        if get_language == 'all':
             # Load English MJFF data
             df_english, _ = create_long_form_MJFF_dataset('english')
             # Load Spanish MJFF data
             df_spanish, _ = create_long_form_MJFF_dataset('spanish')
             # Merge datasets
+            assert all(df_english.columns == df_spanish.columns)
+            df = pd.concat([df_english, df_spanish], ignore_index=True)
+            # Print summary stats of what we have loaded.
+            mjff_dataset_stats(df)
+            return df
+        else:
+            df, _ = create_long_form_MJFF_dataset(get_language)
+            # Print summary stats of what we have loaded.
+            mjff_dataset_stats(df)
+            return df
 
-        elif self.get_which_data == 'english':
-            # Load English MJFF data
-            df, _ = create_long_form_MJFF_dataset('english')
 
-        elif self.get_which_data == 'spanish':
-            # Load English MJFF data
-            df, _ = create_long_form_MJFF_dataset('spanish')
+def mjff_dataset_stats(df: pd.DataFrame):
+    """
+    Some summary statistics of the preprocessed dataset.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Preprocessed pandas dataframe.
+    """
+    sentence_lengths = np.stack([np.char.str_len(i) for i in np.unique(df.Preprocessed_typed_sentence)])
+    print("Total number of study subjects: %d" % (len(set(df.Patient_ID))))
+    print("Number of sentences typed by PD patients: %d" % (len(df.loc[df.Diagnosis == 1])))
+    print("Number of sentences typed by controls: %d" % (len(df.loc[df.Diagnosis == 0])))
+    print("Average sentence length: %05.2f" % sentence_lengths.mean())
+    print("Minimum sentence length: %d" % sentence_lengths.min())
+    print("Maximum sentence length: %d" % sentence_lengths.max())
 
 
 def sentence_level_pause_correction(df,
@@ -288,7 +309,8 @@ def create_mjff_training_data(df: pd.DataFrame) -> Tuple[dict,
     # All typed sentences will be stored here, indexed by their type
     typed_keys = defaultdict(dict)
     # A deconstructed dataframe by sentence ID and text only
-    df_sent_id = df.groupby(['sentence_id', 'sentence_text']).size().reset_index()
+    # df_sent_id = df.groupby(['sentence_id', 'sentence_text']).size().reset_index(drop=True)
+    df_sent_id = df.loc[:, ['sentence_id', 'sentence_text']].drop_duplicates().reset_index(drop=True)
 
     for sub_id in subjects:
         for sent_id in sent_ids:
@@ -542,7 +564,6 @@ def backspace_corrector(sentence: list,
 
 
 def create_dataframe_from_processed_data(my_dict: dict,
-                                         sentence_ids: list,
                                          df_meta: pd.DataFrame) -> pd.DataFrame:
     """
     Function creates a pandas DataFrame which will be used by the NLP model
@@ -552,8 +573,6 @@ def create_dataframe_from_processed_data(my_dict: dict,
     ----------
     my_dict : dict
         Dictionary containing all the preprocessed typed sentences, indexed by subject
-    sentence_id : list
-        List containing the sentence_IDs per subject
     df_meta : Pandas DataFrame
         Contains the mete information on each patient
 
@@ -569,8 +588,7 @@ def create_dataframe_from_processed_data(my_dict: dict,
             pd.DataFrame(
                 [
                     [participant_id,
-                     # This row selects the diagnosis of the patient
-                     int(df_meta.loc[df_meta.participant_id == participant_id].diagnosis),
+                     df_meta.loc[participant_id, 'diagnosis'],
                      sent_id,
                      my_dict[participant_id][sent_id]] for sent_id in my_dict[participant_id].keys()
                 ]
@@ -583,7 +601,6 @@ def create_dataframe_from_processed_data(my_dict: dict,
     df['Preprocessed_typed_sentence'].replace('', np.nan, inplace=True)
     # Remove all such rows
     df.dropna(subset=['Preprocessed_typed_sentence'], inplace=True)
-
     return df
 
 
@@ -606,30 +623,33 @@ def create_long_form_MJFF_dataset(language='english') -> Tuple[pd.DataFrame, pd.
     if language == 'english':
         df = pd.read_csv(data_root / 'EnglishData.csv')
         df_meta = pd.read_csv(data_root / "EnglishParticipantKey.csv",
+                              index_col=0,
                               header=0,
                               names=['participant_id', 'ID', 'attempt', 'diagnosis'],
                               usecols=['participant_id', 'diagnosis'])
     elif language == 'spanish':
         df = pd.read_csv(data_root / 'SpanishData.csv')
         df_meta = pd.read_csv(data_root / "SpanishParticipantKey.csv",
+                              index_col=0,
                               header=0,
                               names=['participant_id', 'diagnosis'])
+
+        # There is no label for subject 167, so we remove her here.
+        df = df.query('participant_id != 167')
         # 'correct' Spanish characters
         df = create_proper_spanish_letters(df)
     else:
         raise ValueError
 
+    # Get the tuple (sentence ID, reference sentence) as a dataframe
+    reference_sentences = df.loc[:, ['sentence_id', 'sentence_text']].drop_duplicates().reset_index(drop=True)
+
     # Creates long sequences with characters repeated for IKI number of steps
     out = create_char_compression_time_mjff_data(df)
 
-    # Extracts all the characters per typed sentence, per subject
-    _, numerical_sentence_ids, reference_sentences = create_mjff_training_data(df)
-
     # Return the empirical data and the reference sentences for downstream tasks
-    return (create_dataframe_from_processed_data(out,
-                                                 numerical_sentence_ids,
-                                                 df_meta).reset_index(drop=True),
-            reference_sentences.loc[:, ['sentence_id', 'sentence_text']])
+    return (create_dataframe_from_processed_data(out, df_meta).reset_index(drop=True),
+            reference_sentences)
 
 
 def create_NLP_datasets_from_MJFF_English_data(use_mechanical_turk=False):
@@ -768,10 +788,3 @@ def create_proper_spanish_letters(df: pd.DataFrame) -> pd.DataFrame:
                         df.drop(typed_chars_index[coordinates_to_remove], inplace=True)
 
     return df
-
-
-def mjff_dataset_stats(df: pd.DataFrame):
-    print("Total number of participants: %d" % (len(set(df.participant_id))))
-    print("Total number of target sentences: %d" % (len(set(df.sentence_text))))
-    print("Total number of sentence IDs: %d" % (len(set(df.sentence_id))))
-    print("Total number of keys used: %d" % (len(set(df.key))))
