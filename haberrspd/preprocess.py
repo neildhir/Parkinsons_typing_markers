@@ -149,17 +149,17 @@ def sentence_level_pause_correction(df,
 
 
 def create_char_compression_time_mjff_data(df: pd.DataFrame,
-                                           char_count_response_threshold=40) -> Tuple[dict, list]:
+                                           char_count_response_threshold=40,
+                                           time_redux_fact=10) -> Tuple[dict, list]:
 
     assert set(['participant_id', 'key', 'timestamp', 'sentence_id']).issubset(df.columns)
     # Filter out responses where the number of characters per typed
     # response, is below a threshold value (40 by default)
-    df = df.groupby('sentence_id').filter(lambda x: x['sentence_id'].count() > char_count_response_threshold)
+    df = df[df.groupby(['participant_id', 'sentence_id']).key.transform('count') > char_count_response_threshold]
     assert not df.empty
 
     # Get the unique number of subjects
     subjects = sorted(set(df.participant_id))  # NOTE: set() is weakly random
-    # sent_ids = sorted(set(df.sentence_id))
 
     # All sentences will be stored here, indexed by their type
     char_compression_sentences = defaultdict(dict)
@@ -191,7 +191,8 @@ def create_char_compression_time_mjff_data(df: pd.DataFrame,
             # Note that we remove the last character to make the calculation correct.
             char_compression_sentences[subj_idx][sent_idx] = \
                 make_character_compression_time_sentence(compression_times,
-                                                         corrected_char_sentence)
+                                                         corrected_char_sentence,
+                                                         time_redux_fact)
 
     # No one likes an empty list so we remove them here
     for subj_idx in subjects:
@@ -238,9 +239,6 @@ def make_character_compression_time_sentence(compression_times: pd.Series,
     assert len(compression_times) == len(characters), "Lengths are: {} and {}".format(
         len(compression_times), len(characters))
 
-    # TODO: need to redo this to take into account the pause-replacement operation
-    # char_times = compression_times.diff().values.astype(int) // time_redux_fact
-    # return flatten([[c]*n for c, n in zip(characters[:-1], char_times[1:])])
     char_times = compression_times // time_redux_fact
     return flatten([[c]*int(n) for c, n in zip(characters[:-1], char_times[1:])])
 
@@ -589,7 +587,7 @@ def create_dataframe_from_processed_data(my_dict: dict,
                 [
                     [participant_id,
                      df_meta.loc[participant_id, 'diagnosis'],
-                     sent_id,
+                     str(sent_id),
                      my_dict[participant_id][sent_id]] for sent_id in my_dict[participant_id].keys()
                 ]
             )
@@ -602,6 +600,14 @@ def create_dataframe_from_processed_data(my_dict: dict,
     # Remove all such rows
     df.dropna(subset=['Preprocessed_typed_sentence'], inplace=True)
     return df
+
+
+def remap_English_MJFF_participant_ids(df):
+    replacement_ids = {}
+    for the_str in set(df.Patient_ID):
+        base = str(''.join(map(str, [int(s) for s in the_str.split()[0] if s.isdigit()])))
+        replacement_ids[the_str] = base
+    return df.replace({'Patient_ID': replacement_ids})
 
 
 def create_long_form_MJFF_dataset(language='english') -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -621,23 +627,28 @@ def create_long_form_MJFF_dataset(language='english') -> Tuple[pd.DataFrame, pd.
 
     # Load raw text and meta data
     if language == 'english':
-        df = pd.read_csv(data_root / 'EnglishData.csv')
+        df = pd.read_csv(data_root / 'EnglishData-duplicateeventsremoved.csv')
         df_meta = pd.read_csv(data_root / "EnglishParticipantKey.csv",
                               index_col=0,
                               header=0,
                               names=['participant_id', 'ID', 'attempt', 'diagnosis'],
                               usecols=['participant_id', 'diagnosis'])
+
     elif language == 'spanish':
-        df = pd.read_csv(data_root / 'SpanishData.csv')
+        df = pd.read_csv(data_root / 'SpanishData-duplicateeventsremoved.csv')
         df_meta = pd.read_csv(data_root / "SpanishParticipantKey.csv",
                               index_col=0,
                               header=0,
                               names=['participant_id', 'diagnosis'])
-
+        df_meta.index = df_meta.index.astype(str)
+        # Post-processing of the data could have lead to corrupted entries
+        uncorrupted_participants = [i for i in set(df.participant_id) if i.isdigit()]
         # There is no label for subject 167, so we remove her here.
-        df = df.query('participant_id != 167')
+        uncorrupted_participants.remove('167')
+        df = df[df["participant_id"].isin(uncorrupted_participants)]
         # 'correct' Spanish characters
         df = create_proper_spanish_letters(df)
+
     else:
         raise ValueError
 
@@ -647,9 +658,15 @@ def create_long_form_MJFF_dataset(language='english') -> Tuple[pd.DataFrame, pd.
     # Creates long sequences with characters repeated for IKI number of steps
     out = create_char_compression_time_mjff_data(df)
 
+    # Final formatting of typing data
+    df = create_dataframe_from_processed_data(out, df_meta).reset_index(drop=True)
+
+    if language == 'english':
+        # Remap participant identifiers so that that e.g. 10a -> 10 and 10b -> 10.
+        return remap_English_MJFF_participant_ids(df), reference_sentences
+
     # Return the empirical data and the reference sentences for downstream tasks
-    return (create_dataframe_from_processed_data(out, df_meta).reset_index(drop=True),
-            reference_sentences)
+    return df, reference_sentences
 
 
 def create_NLP_datasets_from_MJFF_English_data(use_mechanical_turk=False):
