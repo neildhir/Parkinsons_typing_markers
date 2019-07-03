@@ -9,6 +9,8 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 
 
+# TODO: add attention
+
 class CharCNN(nn.Module):
     """
     Implementation: https://github.com/srviest/char-cnn-text-classification-pytorch

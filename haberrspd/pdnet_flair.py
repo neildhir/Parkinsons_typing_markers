@@ -14,13 +14,13 @@ from flair.models import TextClassifier
 from flair.trainers import ModelTrainer
 from hyperopt import hp
 
-DATA_ROOT = Path("data/") / "MJFF"  # Note the relative path
-DATA_ROOT_FASTTEXT = Path("data/MJFF/fasttext/")  # Note the relative path
+DATA_ROOT_FASTTEXT = Path("../data/MJFF/fasttext/")  # Note the relative path
+RESULTS_ROOT = Path("../results/MJFF/")  # Note the relative path
 
 
-def pdnet_char_mjff(config,
-                    language='english',
-                    optimise=False):
+def character_RNN(config,
+                  language='english',
+                  optimise=False):
     """
     Model to classify the long-format MJFF data, uses character-level embeddings
     to map to a numerical space.
@@ -42,25 +42,29 @@ def pdnet_char_mjff(config,
 
     assert torch.cuda.is_available(), "Do not run this model with GPU support."
     # Specfiy the directory where all our results and data will be stored.
-    lang_dir = Path('char_' + str(language) + "/")
+    lang_dir = Path(str(language) + "/")
 
     if language == 'english':
-        # Note the name of the path (test,dev and train get identified automatically)
+        # Note the name of the path (test, dev and train get identified automatically)
         corpus = ClassificationCorpus(DATA_ROOT_FASTTEXT / lang_dir)
-        # Set word embeddings here
+
+        # Set word embeddings here _NOTE_: these are character-level embeddings
         word_embeddings = [CharacterEmbeddings()]
-        # document_embeddings = [CharacterEmbeddings()]
+
     else:
         raise ValueError("Language {} is not supported.".format(language))
 
     # Combine embeddings to make a "document"
-    document_embeddings = DocumentRNNEmbeddings(word_embeddings,
+    document_embeddings = DocumentRNNEmbeddings(embeddings=word_embeddings,
                                                 hidden_size=config.hidden_size,
-                                                reproject_words=config.reproject_words,
-                                                bidirectional=config.bidirectional,
-                                                rnn_type=config.rnn_type,
                                                 rnn_layers=config.rnn_layers,
-                                                reproject_words_dimension=config.reproject_words_dimension)
+                                                reproject_words=config.reproject_words,
+                                                reproject_words_dimension=config.reproject_words_dimension,
+                                                bidirectional=config.bidirectional,
+                                                dropout=config.dropout,
+                                                word_dropout=config.word_dropout,
+                                                locked_dropout=config.locked_dropout,
+                                                rnn_type=config.rnn_type)
 
     # Classify said document using a TextClassifer
     classifier = TextClassifier(document_embeddings,
@@ -71,10 +75,9 @@ def pdnet_char_mjff(config,
     trainer = ModelTrainer(classifier, corpus)
 
     # Train model
-    trainer.train(DATA_ROOT_FASTTEXT / lang_dir,
+    trainer.train(RESULTS_ROOT / lang_dir,
                   learning_rate=config.learning_rate,
                   mini_batch_size=config.mini_batch_size,
-                  anneal_factor=config.anneal_factor,
                   patience=config.patience,
                   max_epochs=config.max_epochs)
 
