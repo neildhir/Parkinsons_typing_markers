@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 
 
-# TODO: add attention
+# TODO: add attention (maybe): https://mlwhiz.com/blog/2019/03/09/deeplearning_architectures_text_classification/
 
 class CharCNN(nn.Module):
     """
@@ -160,7 +160,11 @@ class CNN_Text(nn.Module):
 
 
 class Highway(nn.Module):
-    """Highway network"""
+    """Highway network
+    https://github.com/lucko515/deep-convolutional-highway-network
+    http://www.cs.toronto.edu/~fidler/teaching/2015/slides/CSC2523/renjie_highwayNNs.pdf
+    --very useful for training many multi-layered CNN
+    """
 
     def __init__(self, input_size):
         super(Highway, self).__init__()

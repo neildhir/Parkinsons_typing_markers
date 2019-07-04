@@ -1,5 +1,5 @@
 {
-    "python.pythonPath": "/home/neil/anaconda3/envs/py36/bin/python",
+    "python.pythonPath": "/home/neil/anaconda3/envs/keras_gpu/bin/python",
     "python.testing.unittestArgs": [
         "-v",
         "-s",
