@@ -12,6 +12,7 @@ from keras.layers import (LSTM, BatchNormalization, Bidirectional, Conv1D,
                           MaxPooling1D, TimeDistributed, concatenate)
 from keras.models import Model
 from keras.optimizers import Adam
+from sklearn.model_selection import train_test_split
 
 # Extra options to make GPU work as required
 gpu_options = tf.GPUOptions(allow_growth=True)
@@ -42,50 +43,44 @@ if len(sys.argv) == 2:
         checkpoint = str(sys.argv[1])
 
 # Load MJFF data
-data = pd.read_csv("../data/MJFF/preproc/EnglishData-preprocessed.csv", header=0)
-docs = []
-diagnoses = []
-# Note that the interpretation here is that each document is comensurate with a suject
+df = pd.read_csv("../data/MJFF/preproc/EnglishData-preprocessed.csv", header=0)
+docs = []  # Contains on the index all sentences typed a particular subject
+diagnoses = []  # Contains on the index, the PD diagnosis of a particular subject
+# Note that the interpretation here is that each document is comensurate with a subject
 # in the dataset.
-for i in data.Patient_ID:
-    docs.append(data.loc[(data.Patient_ID == i)].Preprocessed_typed_sentence.str.lower())
-    diagnoses.append(data.loc[(data.Patient_ID == i)])
+for i in df.Patient_ID.drop_duplicates():
+    docs.append(df.loc[(df.Patient_ID == i)].Preprocessed_typed_sentence.str.lower().tolist())
+    diagnoses.append(df.loc[(df.Patient_ID == i)])
 
-# Get the character alphabet
-chars = set(''.join(docs))
-print('total chars:', len(chars))
+# Get the unique set of characters in the alphabet
+chars = set(''.join([x[0] for x in docs]))
+
+print('Total number of characters:', len(chars))
 char_indices = dict((c, i) for i, c in enumerate(chars))
 indices_char = dict((i, c) for i, c in enumerate(chars))
 
-print('Sample doc{}'.format(docs[1200]))
+print('Sample doc{}'.format(docs[13]))
 
-maxlen = 512
-max_sentences = 15
+# Rounds to nearest thousand
+maxlen = round(df.Preprocessed_typed_sentence.apply(lambda x: len(x)).max(), -3)
+max_sentences_per_subject = 30  # Note here that the first MJFF data has each subject on 15 written sentences
 
-X = np.ones((len(docs), max_sentences, maxlen), dtype=np.int64) * -1
+# Make training data array
+X = np.ones((len(docs), max_sentences_per_subject, maxlen), dtype=np.int64) * -1
+# Make a target array from binary diagnoses
 y = np.array(diagnoses)
 
+# Populate the training array
 for i, doc in enumerate(docs):
     for j, sentence in enumerate(doc):
-        if j < max_sentences:
+        if j < max_sentences_per_subject:
             for t, char in enumerate(sentence[-maxlen:]):
                 X[i, j, (maxlen - 1 - t)] = char_indices[char]
 
-print('Sample X:{}'.format(X[1200, 2]))
-print('y:{}'.format(y[1200]))
-
-ids = np.arange(len(X))
-np.random.shuffle(ids)
-
-# shuffle
-X = X[ids]
-y = y[ids]
-
-X_train = X[:20000]
-X_test = X[22500:]
-
-y_train = y[:20000]
-y_test = y[22500:]
+print('Sample X:{}'.format(X[13, 2]))
+print('y:{}'.format(y[13]))
+# Chop up data into train and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True)
 
 
 def char_block(in_layer,
@@ -149,27 +144,14 @@ if checkpoint:
 
 file_name = os.path.basename(sys.argv[0]).split('.')[0]
 
-# Check if checkpoints dir exists, if not make it
-if not os.path.exists('../../keras_checkpoints'):
-    os.makedirs('../../keras_checkpoints')
-check_cb = keras.callbacks.ModelCheckpoint('../../keras_checkpoints/' + file_name + '.{epoch:02d}-{val_loss:.2f}.hdf5',
+check_cb = keras.callbacks.ModelCheckpoint('checkpoints/' + file_name + '.{epoch:02d}-{val_loss:.2f}.hdf5',
                                            monitor='val_loss',
-                                           verbose=0,
-                                           save_best_only=True,
-                                           mode='min')
-earlystop_cb = keras.callbacks.EarlyStopping(monitor='val_loss',
-                                             patience=10,
-                                             verbose=0,
-                                             mode='auto')
-optimizer = 'adam'
-model.compile(loss='binary_crossentropy',
-              optimizer=optimizer,
-              metrics=['accuracy'])
+                                           verbose=0, save_best_only=True, mode='min')
 
-model.fit(X_train,
-          y_train,
-          validation_data=(X_test, y_test),
-          batch_size=20,
-          epochs=30,
-          shuffle=True,
-          callbacks=[check_cb, earlystop_cb])
+earlystop_cb = keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, verbose=0, mode='auto')
+
+optimizer = 'rmsprop'
+model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=['accuracy'])
+
+model.fit(X_train, y_train, validation_data=(X_test, y_test), batch_size=10,
+          epochs=30, shuffle=True, callbacks=[check_cb, earlystop_cb])
