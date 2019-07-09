@@ -48,7 +48,7 @@ if len(sys.argv) == 2:
         checkpoint = str(sys.argv[1])
 
 # Load MJFF data
-df = pd.read_csv("../data/MJFF/preproc/EnglishData-preprocessed.csv", header=0)
+df = pd.read_csv("../../data/MJFF/preproc/EnglishData-preprocessed.csv", header=0)
 docs = []  # Contains on the index all sentences typed a particular subject
 diagnoses = []  # Contains on the index, the PD diagnosis of a particular subject
 # Note that the interpretation here is that each document is comensurate with a subject
@@ -167,7 +167,7 @@ earlystop_cb = keras.callbacks.EarlyStopping(monitor='val_loss',
 
 optimizer = 'adam'
 model.compile(loss='binary_crossentropy',  # TODO: change to cosine loss
-              optimizer=optimizer,
+              optimizer=optimizer,  # TODO: check which is most appropriate SGD
               metrics=['accuracy'])
 
 model.fit(X_train,
