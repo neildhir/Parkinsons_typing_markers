@@ -1,6 +1,7 @@
 import keras.backend as K
+from keras.initializers import RandomNormal
 from keras import callbacks
-from keras.layers import Conv1D, Dense, GlobalMaxPool1D, MaxPooling1D
+from keras.layers import Conv1D, Dense, GlobalMaxPool1D, MaxPooling1D, Dropout
 from numpy import array, int64, ones
 from pandas import read_csv
 from sklearn.model_selection import train_test_split
@@ -15,13 +16,14 @@ def binarize(x):
 
     Parameters
     ----------
-    x : [type]
-        [description]
+    x : string
+        A character string from a sentence
     Returns
     -------
     Tensor
         A one-hot encoded tensor-representation of a character
     """
+    # TODO: double-check how this encoding actually prints out [ 0 0 0 0 1 ...] etc
     return cast(one_hot(x,
                         K.alphabet_size,
                         on_value=1,
@@ -98,8 +100,8 @@ def create_training_data(DATA_ROOT, data_string):
                 for t, char in enumerate(sentence[-max_sentence_length:]):
                     X[i, j, (max_sentence_length - 1 - t)] = alphabet_indices[char]
 
-    print('Sample X:{}'.format(X[13, 2]))
-    print('Target y:{}'.format(y[13]))
+    print('Sample X (encoded sentence): {}'.format(X[13, 2]))
+    print('Target y (1: PD; 0: control): {}'.format(y[13]))
 
     # Chop up data into train and test sets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True)
@@ -110,7 +112,87 @@ def create_training_data(DATA_ROOT, data_string):
 # =============
 
 
-def character_1D_convolution_block(in_layer,
+def character_dense_dropout_block(flattened, units, rates):
+    """
+    To be used with char_cnn_model() from Zhang et al.'s paper.
+
+    Parameters
+    ----------
+    flattened : [type]
+        [description]
+    units : [type]
+        [description]
+    rates : [type]
+        [description]
+
+    Returns
+    -------
+    [type]
+        [description]
+    """
+    assert len(units) == len(rates)
+
+    # Create multiple filters on the fly
+    for i in range(len(units)):
+
+        # Dense layers
+        flattened = Dense(units[i],
+                          kernel_initializer=RandomNormal(mean=0.0, stddev=0.05),
+                          bias_initializer=RandomNormal(mean=0.0, stddev=0.05),
+                          activation='relu')(flattened)
+
+        # Dropout
+        if rates[i]:
+            # Only enters this logic if the entry is != None
+            flattened = Dropout(rates[i])(flattened)
+
+    return flattened
+
+
+def character_1D_convolution_maxpool_block_v2(embedded,
+                                              nb_filters: list,
+                                              filter_lengths: list,
+                                              pool_lengths: list):
+    """
+    To be used with char_cnn_model() from Zhang et al.'s paper.
+
+    Parameters
+    ----------
+    embedded : [type]
+        A sentencen which has been one-hot encoded (on character-level)
+    nb_filters : tuple, optional
+        [description], by default (32, 64)
+    filter_lengths : tuple, optional
+        [description], by default (3, 3)
+    pool_length : tuple, optional
+        The pooling sizes, we use None if a layers is not meant to have pooling
+
+    Returns
+    -------
+    [type]
+        [description]
+    """
+
+    assert len(nb_filters) == len(filter_lengths) == len(pool_lengths)
+
+    # Create multiple filters on the fly
+    for i in range(len(nb_filters)):
+
+        # Convolution
+        embedded = Conv1D(filters=nb_filters[i],
+                          kernel_size=filter_lengths[i],
+                          kernel_initializer=RandomNormal(mean=0.0, stddev=0.05),
+                          bias_initializer=RandomNormal(mean=0.0, stddev=0.05),
+                          activation='relu')(embedded)
+
+        # Max pooling
+        if pool_lengths[i]:
+            embedded = MaxPooling1D(pool_size=pool_lengths[i])(embedded)
+
+    return embedded
+
+
+def character_1D_convolution_block(embedded,
                                    nb_filter=(32, 64),
                                    filter_length=(3, 3),
                                    subsample=(2, 1),
@@ -118,18 +200,18 @@ def character_1D_convolution_block(in_layer,
 
     assert len(nb_filter) == len(filter_length) == len(subsample) == len(pool_length)
 
-    block = in_layer
     # Create multiple filters on the fly
     for i in range(len(nb_filter)):
         # convolution
-        block = Conv1D(filters=nb_filter[i],
-                       kernel_size=filter_length[i],
-                       padding='valid',
-                       activation='tanh',  # TODO: check if relu might be more appropriate here
-                       strides=subsample[i])(block)
+        embedded = Conv1D(filters=nb_filter[i],
+                          kernel_size=filter_length[i],
+                          padding='valid',
+                          activation='relu',  # TODO: may be a more suitable activation func. here
+                          kernel_initializer='glorot_normal',
+                          strides=subsample[i])(embedded)
         # pooling
         if pool_length[i]:
-            block = MaxPooling1D(pool_size=pool_length[i])(block)
-    block = GlobalMaxPool1D()(block)
-    block = Dense(64, activation='relu')(block)
-    return block
+            embedded = Dropout(0.1)(embedded)
+            embedded = MaxPooling1D(pool_size=pool_length[i])(embedded)
+
+    return embedded
