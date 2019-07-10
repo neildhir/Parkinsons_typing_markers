@@ -67,7 +67,7 @@ def create_mjff_data_objects(df):
     return subject_documents, subject_diagnoses, alphabet
 
 
-def create_training_data(DATA_ROOT, data_string):
+def create_training_data(DATA_ROOT, data_string, which_level='sentence'):
     print("This function is currently only designed for long-format data.")
     assert type(data_string) is str
 
@@ -85,27 +85,42 @@ def create_training_data(DATA_ROOT, data_string):
 
     # Rounds (up) to nearest thousand
     max_sentence_length = round(df.Preprocessed_typed_sentence.apply(lambda x: len(x)).max(), -3)
-    # Note here that the first MJFF data has each subject on 15 written sentences
-    max_sentences_per_subject = 30
-
-    # Make training data array
-    X = ones((len(subject_documents), max_sentences_per_subject, max_sentence_length), dtype=int64) * -1
-    # Make a target array from binary diagnoses
-    y = array(subjects_diagnoses)
 
     # Populate the training array
-    for i, doc in enumerate(subject_documents):
-        for j, sentence in enumerate(doc):
-            if j < max_sentences_per_subject:
-                for t, char in enumerate(sentence[-max_sentence_length:]):
-                    X[i, j, (max_sentence_length - 1 - t)] = alphabet_indices[char]
+    if which_level == 'subject':
+        # Note here that the first MJFF data has each subject on 15 written sentences
+        max_sentences_per_subject = 30
+        # Make training data array
+        X = ones((len(subject_documents), max_sentences_per_subject, max_sentence_length), dtype=int64) * -1
+        # Make a target array from binary diagnoses
+        y = array(subjects_diagnoses)
+        for i, doc in enumerate(subject_documents):
+            for j, sentence in enumerate(doc):
+                if j < max_sentences_per_subject:
+                    for t, char in enumerate(sentence[-max_sentence_length:]):
+                        X[i, j, (max_sentence_length - 1 - t)] = alphabet_indices[char]
 
-    print('Sample X (encoded sentence): {}'.format(X[13, 2]))
-    print('Target y (1: PD; 0: control): {}'.format(y[13]))
+        print('Sample X (encoded sentence): {}'.format(X[13, 2]))
+        print('Target y (1: PD; 0: control): {}'.format(y[13]))
 
-    # Chop up data into train and test sets
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True)
-    return X_train, X_test, y_train, y_test, max_sentences_per_subject, max_sentence_length
+        # Chop up data into train and test sets
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True)
+        return X_train, X_test, y_train, y_test, max_sentences_per_subject, max_sentence_length
+
+    elif which_level == 'sentence':
+        # Make training data array
+        all_sentences = [item for sublist in subject_documents for item in sublist]
+        X = ones((len(all_sentences), max_sentence_length), dtype=int64) * -1
+        y = df.Diagnosis.tolist()
+        for j, sentence in enumerate(all_sentences):
+            for t, char in enumerate(sentence[-max_sentence_length:]):
+                # This gets binarised on the fly, instead of storing the whole thing in memory
+                X[j, (max_sentence_length - 1 - t)] = alphabet_indices[char]
+
+        return X, y
+    else:
+        raise ValueError
+
 
 # =============
 # MODEL BLOCKS

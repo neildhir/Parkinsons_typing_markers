@@ -81,13 +81,16 @@ def char_cnn_model(max_sentence_length):
     """
 
     # Set the sentence input, which is a sentence which has been one-hot encoded
-    char_sentence_as_one_hot = Input(shape=(max_sentence_length,), dtype='int64')
+    input_sentence = Input(shape=(max_sentence_length,), dtype='int64')
+    # Binarize the sentence's character on the fly, don't store in memory
+    # char indices to one hot matrix, 1D sequence to 2D
+    embedded = Lambda(binarize, output_shape=binarize_outshape)(input_sentence)
 
     # Convolutions and MaxPooling
     nb_filters = [256] * 6
     filter_lengths = [7, 7, 3, 3, 3, 3]
     pool_lengths = [3, 3, None, None, None, 3]
-    embedded = character_1D_convolution_maxpool_block_v2(char_sentence_as_one_hot,
+    embedded = character_1D_convolution_maxpool_block_v2(embedded,
                                                          nb_filters,
                                                          filter_lengths,
                                                          pool_lengths)
@@ -97,8 +100,6 @@ def char_cnn_model(max_sentence_length):
     # Fully connected layers with (some) dropout
     units = [1024, 1024, 14]
     rates = [0.5, 0.5, None]
-    final = character_dense_dropout_block(flattened,
-                                          units,
-                                          rates)
+    final = character_dense_dropout_block(flattened, units, rates)
 
-    return Model(input=char_sentence_as_one_hot, output=final)
+    return Model(input=input_sentence, output=final)
