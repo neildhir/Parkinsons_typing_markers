@@ -88,12 +88,12 @@ def char_cnn_model(max_sentence_length):
     embedded = Lambda(binarize, output_shape=binarize_outshape)(input_sentence)
 
     # Convolutions and MaxPooling
-    dim_output_space = 64  # Original from paper: 256
-    number_of_filters = 3  # Orginal from paper: 6
+    dim_output_space = 32  # Original from paper: 256
+    number_of_filters = 2  # Orginal from paper: 6
 
     nb_filters = [dim_output_space] * number_of_filters
-    filter_lengths = [7, 7, 3, ]  # Original from paper: [7, 7, 3, 3, 3, 3]
-    pool_lengths = [3, 3, None, ]  # Original from paper [3, 3, None, None, None, 3]
+    filter_lengths = [10, 10, ]  # Original from paper: [7, 7, 3, 3, 3, 3]
+    pool_lengths = [3, 3, ]  # Original from paper [3, 3, None, None, None, 3]
 
     embedded = character_1D_convolution_maxpool_block_v2(embedded,
                                                          nb_filters,
@@ -103,7 +103,7 @@ def char_cnn_model(max_sentence_length):
     flattened = Flatten()(embedded)
 
     # Fully connected layers with (some) dropout
-    dense_units = [64, 32, 1]  # Original from paper: [1024, 1024, num_classes]
+    dense_units = [16, 8, 1]  # Original from paper: [1024, 1024, num_classes]
     dropout_rates = [0.5, 0.5, None]
     final = character_dense_dropout_block(flattened, dense_units, dropout_rates)
 
