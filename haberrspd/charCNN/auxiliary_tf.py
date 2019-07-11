@@ -36,6 +36,10 @@ def binarize_outshape(in_shape):
     return in_shape[0], in_shape[1], K.alphabet_size
 
 
+def binarize_outshape_sentence(in_shape):
+    return in_shape[1],  K.alphabet_size
+
+
 class LossHistory(callbacks.Callback):
     def on_train_begin(self, logs={}):
         self.losses = []
@@ -68,8 +72,31 @@ def create_mjff_data_objects(df):
 
 
 def create_training_data(DATA_ROOT, data_string, which_level='sentence'):
-    print("This function is currently only designed for long-format data.")
+    """
+    This function creats one-hot encoded character -data for the document (=subject)
+    classification model, as well as the sentence classification model.
+
+    Parameters
+    ----------
+    DATA_ROOT : str
+        Location of the MJFF data folder
+    data_string : str
+        The .csv file that we want to analyse
+    which_level : str, optional
+        Option sets if we are working on documents on sentence -level
+
+    Returns
+    -------
+    tuple
+        Contains the training and test data as well as some parameters
+
+    Raises
+    ------
+    ValueError
+        If we have passed a level option which doesn't exist.
+    """
     assert type(data_string) is str
+    assert which_level in ['sentence', 'document']
 
     df = read_csv(DATA_ROOT / data_string, header=0)  # MJFF data
     subject_documents, subjects_diagnoses, alphabet = create_mjff_data_objects(df)
@@ -87,7 +114,7 @@ def create_training_data(DATA_ROOT, data_string, which_level='sentence'):
     max_sentence_length = round(df.Preprocessed_typed_sentence.apply(lambda x: len(x)).max(), -3)
 
     # Populate the training array
-    if which_level == 'subject':
+    if which_level == 'document':
         # Note here that the first MJFF data has each subject on 15 written sentences
         max_sentences_per_subject = 30
         # Make training data array
@@ -98,6 +125,7 @@ def create_training_data(DATA_ROOT, data_string, which_level='sentence'):
             for j, sentence in enumerate(doc):
                 if j < max_sentences_per_subject:
                     for t, char in enumerate(sentence[-max_sentence_length:]):
+                        # XXX: this is in reverse order
                         X[i, j, (max_sentence_length - 1 - t)] = alphabet_indices[char]
 
         print('Sample X (encoded sentence): {}'.format(X[13, 2]))
@@ -115,9 +143,13 @@ def create_training_data(DATA_ROOT, data_string, which_level='sentence'):
         for j, sentence in enumerate(all_sentences):
             for t, char in enumerate(sentence[-max_sentence_length:]):
                 # This gets binarised on the fly, instead of storing the whole thing in memory
-                X[j, (max_sentence_length - 1 - t)] = alphabet_indices[char]
+                # X[j, (max_sentence_length - 1 - t)] = alphabet_indices[char] # Characters in reversed order
+                X[j, t] = alphabet_indices[char]
 
-        return X, y
+        # Chop up data into train and test sets
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True)
+        return X_train, X_test, y_train, y_test, max_sentence_length
+
     else:
         raise ValueError
 
@@ -176,9 +208,9 @@ def character_1D_convolution_maxpool_block_v2(embedded,
     embedded : [type]
         A sentencen which has been one-hot encoded (on character-level)
     nb_filters : tuple, optional
-        [description], by default (32, 64)
+        [description]
     filter_lengths : tuple, optional
-        [description], by default (3, 3)
+        [description]
     pool_length : tuple, optional
         The pooling sizes, we use None if a layers is not meant to have pooling
 

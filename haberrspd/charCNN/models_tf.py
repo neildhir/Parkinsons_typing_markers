@@ -14,7 +14,8 @@ from keras.layers import (Conv1D,
                           concatenate)
 from keras.models import Model
 from keras.initializers import RandomNormal
-from haberrspd.charCNN.auxiliary_tf import (binarize, binarize_outshape,
+from keras.backend import int_shape, ndim
+from haberrspd.charCNN.auxiliary_tf import (binarize, binarize_outshape, binarize_outshape_sentence,
                                             character_1D_convolution_maxpool_block_v2,
                                             character_dense_dropout_block,
                                             character_1D_convolution_block)
@@ -82,14 +83,18 @@ def char_cnn_model(max_sentence_length):
 
     # Set the sentence input, which is a sentence which has been one-hot encoded
     input_sentence = Input(shape=(max_sentence_length,), dtype='int64')
-    # Binarize the sentence's character on the fly, don't store in memory
-    # char indices to one hot matrix, 1D sequence to 2D
+
+    # Lambda layer that will create a one-hot encoding of a sequence of characters on the fly. Holding one-hot encodings in memory is very inefficient.
     embedded = Lambda(binarize, output_shape=binarize_outshape)(input_sentence)
 
     # Convolutions and MaxPooling
-    nb_filters = [256] * 6
-    filter_lengths = [7, 7, 3, 3, 3, 3]
-    pool_lengths = [3, 3, None, None, None, 3]
+    dim_output_space = 64  # Original from paper: 256
+    number_of_filters = 3  # Orginal from paper: 6
+
+    nb_filters = [dim_output_space] * number_of_filters
+    filter_lengths = [7, 7, 3, ]  # Original from paper: [7, 7, 3, 3, 3, 3]
+    pool_lengths = [3, 3, None, ]  # Original from paper [3, 3, None, None, None, 3]
+
     embedded = character_1D_convolution_maxpool_block_v2(embedded,
                                                          nb_filters,
                                                          filter_lengths,
@@ -98,8 +103,8 @@ def char_cnn_model(max_sentence_length):
     flattened = Flatten()(embedded)
 
     # Fully connected layers with (some) dropout
-    units = [1024, 1024, 14]
-    rates = [0.5, 0.5, None]
-    final = character_dense_dropout_block(flattened, units, rates)
+    dense_units = [32, 16, 16]  # Original from paper: [1024, 1024, 14]
+    dropout_rates = [0.5, 0.5, None]
+    final = character_dense_dropout_block(flattened, dense_units, dropout_rates)
 
-    return Model(input=input_sentence, output=final)
+    return Model(inputs=input_sentence, outputs=final)
