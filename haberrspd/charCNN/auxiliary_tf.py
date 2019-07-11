@@ -1,3 +1,6 @@
+import numpy as np
+import keras
+import matplotlib.pyplot as plt
 import keras.backend as K
 from keras.initializers import RandomNormal
 from keras import callbacks
@@ -6,6 +9,7 @@ from numpy import array, int64, ones
 from pandas import read_csv
 from sklearn.model_selection import train_test_split
 from tensorflow import cast, float32, one_hot
+import matplotlib
 
 
 def binarize(x):
@@ -159,7 +163,7 @@ def create_training_data(DATA_ROOT, data_string, which_level='sentence'):
 # =============
 
 
-def character_dense_dropout_block(flattened, units, rates):
+def character_dense_dropout_block(flattened, units, dropout_rates):
     """
     To be used with char_cnn_model() from Zhang et al.'s paper.
 
@@ -177,21 +181,34 @@ def character_dense_dropout_block(flattened, units, rates):
     [type]
         [description]
     """
-    assert len(units) == len(rates)
+    assert len(units) == len(dropout_rates)
 
     # Create multiple filters on the fly
-    for i in range(len(units)):
+    j = 0
+    while units:
+        unit = units.pop(0)
 
-        # Dense layers
-        flattened = Dense(units[i],
+        # Assign appropriate activation function for dense layers
+        if units:
+            # List is not empty
+            activation_func = 'relu'
+        elif not units:
+            # List is empty, alas we have reached the end of it and switch activation
+            activation_func = 'sigmoid'
+
+        # Dense
+        flattened = Dense(unit,
                           kernel_initializer=RandomNormal(mean=0.0, stddev=0.05),
                           bias_initializer=RandomNormal(mean=0.0, stddev=0.05),
-                          activation='relu')(flattened)
+                          activation=activation_func)(flattened)
 
         # Dropout
-        if rates[i]:
+        if dropout_rates[j]:
             # Only enters this logic if the entry is != None
-            flattened = Dropout(rates[i])(flattened)
+            flattened = Dropout(dropout_rates[j])(flattened)
+
+        # Increment index counter
+        j += 1
 
     return flattened
 

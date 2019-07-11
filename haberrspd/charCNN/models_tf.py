@@ -103,7 +103,7 @@ def char_cnn_model(max_sentence_length):
     flattened = Flatten()(embedded)
 
     # Fully connected layers with (some) dropout
-    dense_units = [32, 16, 16]  # Original from paper: [1024, 1024, 14]
+    dense_units = [64, 32, 1]  # Original from paper: [1024, 1024, num_classes]
     dropout_rates = [0.5, 0.5, None]
     final = character_dense_dropout_block(flattened, dense_units, dropout_rates)
 
