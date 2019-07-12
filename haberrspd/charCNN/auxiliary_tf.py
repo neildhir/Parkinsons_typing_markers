@@ -163,7 +163,7 @@ def create_training_data(DATA_ROOT, data_string, which_level='sentence'):
 # =============
 
 
-def character_dense_dropout_block(flattened, units, dropout_rates):
+def character_dense_dropout_block(flattened, units, dropout_rates, **params):
     """
     To be used with char_cnn_model() from Zhang et al.'s paper.
 
@@ -191,15 +191,15 @@ def character_dense_dropout_block(flattened, units, dropout_rates):
         # Assign appropriate activation function for dense layers
         if units:
             # List is not empty
-            activation_func = 'relu'
+            activation_func = params['dense_activation']
         elif not units:
             # List is empty, alas we have reached the end of it and switch activation
-            activation_func = 'sigmoid'
+            activation_func = params['last_activation']
 
         # Dense
         flattened = Dense(unit,
-                          kernel_initializer=RandomNormal(mean=0.0, stddev=0.05),
-                          bias_initializer=RandomNormal(mean=0.0, stddev=0.05),
+                          kernel_initializer=params['dense_kernel_initializer'],
+                          bias_initializer=params['dense_bias_initializer'],
                           activation=activation_func)(flattened)
 
         # Dropout
@@ -213,11 +213,7 @@ def character_dense_dropout_block(flattened, units, dropout_rates):
     return flattened
 
 
-def character_1D_convolution_maxpool_block_v2(embedded,
-                                              nb_filters: list,
-                                              filter_lengths: list,
-                                              pool_lengths: list,
-                                              **params: dict):
+def character_1D_convolution_maxpool_block_v2(embedded, **params: dict):
     """
     To be used with char_cnn_model() from Zhang et al.'s paper.
 
@@ -238,6 +234,10 @@ def character_1D_convolution_maxpool_block_v2(embedded,
         [description]
     """
 
+    # Convolutions and MaxPooling
+    nb_filters = [params['conv_output_space']] * params['number_of_filters']
+    filter_lengths = [params['filter_length']] * params['number_of_filters']
+    pool_lengths = [params['pool_length']] * params['number_of_filters']
     assert len(nb_filters) == len(filter_lengths) == len(pool_lengths)
 
     # Create multiple filters on the fly
@@ -246,9 +246,9 @@ def character_1D_convolution_maxpool_block_v2(embedded,
         # Convolution
         embedded = Conv1D(filters=nb_filters[i],
                           kernel_size=filter_lengths[i],
-                          kernel_initializer=params['kernel_initializer'],
-                          bias_initializer=params['bias_initializer'],
-                          activation=params['activation'])(embedded)
+                          kernel_initializer=params['conv_kernel_initializer'],
+                          bias_initializer=params['conv_bias_initializer'],
+                          activation=params['conv_activation'])(embedded)
 
         # Max pooling
         if pool_lengths[i]:
