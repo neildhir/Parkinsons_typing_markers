@@ -108,3 +108,43 @@ def char_cnn_model(max_sentence_length):
     final = character_dense_dropout_block(flattened, dense_units, dropout_rates)
 
     return Model(inputs=input_sentence, outputs=final)
+
+
+def char_cnn_model_talos(max_sentence_length,
+                         params):
+    """
+    The same as "Character-level Convolutional Networks for Text Classification"
+                    / "Text Understanding from Scratch"
+
+    ...but with hyperparameter optimisation.
+    """
+
+    # Set the sentence input, which is a sentence which has been one-hot encoded
+    input_sentence = Input(shape=(max_sentence_length,), dtype='int64')
+
+    # Lambda layer that will create a one-hot encoding of a sequence of characters on the fly. Holding one-hot encodings in memory is very inefficient.
+    embedded = Lambda(binarize, output_shape=binarize_outshape)(input_sentence)
+
+    # Convolutions and MaxPooling
+    nb_filters = [params['conv_output_space']] * params['number_of_filters']
+    filter_lengths = [params['filter_length']] * params['number_of_filters']
+    pool_lengths = [params['pool_length']] * params['number_of_filters']
+
+    embedded = character_1D_convolution_maxpool_block_v2(embedded,
+                                                         nb_filters,
+                                                         filter_lengths,
+                                                         pool_lengths,
+                                                         **params)
+    # Reshaping to 1D array for further layers
+    flattened = Flatten()(embedded)
+
+    # Fully connected layers with (some) dropout
+    dense_units = [16, 8, 1]  # Original from paper: [1024, 1024, num_classes]
+    dropout_rates = [0.5, 0.5, None]
+    final = character_dense_dropout_block(flattened, dense_units, dropout_rates)
+
+    model = Model(inputs=input_sentence, outputs=final)
+    model.compile()
+    fitted_model = model.fit()
+
+    return fitted_model, model

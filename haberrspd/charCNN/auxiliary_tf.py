@@ -216,7 +216,8 @@ def character_dense_dropout_block(flattened, units, dropout_rates):
 def character_1D_convolution_maxpool_block_v2(embedded,
                                               nb_filters: list,
                                               filter_lengths: list,
-                                              pool_lengths: list):
+                                              pool_lengths: list,
+                                              **params: dict):
     """
     To be used with char_cnn_model() from Zhang et al.'s paper.
 
@@ -245,9 +246,9 @@ def character_1D_convolution_maxpool_block_v2(embedded,
         # Convolution
         embedded = Conv1D(filters=nb_filters[i],
                           kernel_size=filter_lengths[i],
-                          kernel_initializer=RandomNormal(mean=0.0, stddev=0.05),
-                          bias_initializer=RandomNormal(mean=0.0, stddev=0.05),
-                          activation='relu')(embedded)
+                          kernel_initializer=params['kernel_initializer'],
+                          bias_initializer=params['bias_initializer'],
+                          activation=params['activation'])(embedded)
 
         # Max pooling
         if pool_lengths[i]:
