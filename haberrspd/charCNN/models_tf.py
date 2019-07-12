@@ -115,8 +115,7 @@ def char_cnn_model_talos(X_train,
                          y_train,
                          X_test,
                          y_test,
-                         params: dict,
-                         non_opt_params: dict):
+                         params):
     """
     The same as "Character-level Convolutional Networks for Text Classification"
                     / "Text Understanding from Scratch"
@@ -130,8 +129,15 @@ def char_cnn_model_talos(X_train,
     # Lambda layer that will create a one-hot encoding of a sequence of characters on the fly. Holding one-hot encodings in memory is very inefficient.
     embedded = Lambda(binarize, output_shape=binarize_outshape)(input_sentence)
 
-    # Block-creation of convolution layers
-    embedded = character_1D_convolution_maxpool_block_v2(embedded, **params)
+    # Convolutions and MaxPooling
+    nb_filters = [params['conv_output_space']] * params['number_of_filters']
+    filter_lengths = [params['filter_length']] * params['number_of_filters']
+    pool_lengths = [params['pool_length']] * params['number_of_filters']
+    embedded = character_1D_convolution_maxpool_block_v2(embedded,
+                                                         nb_filters,
+                                                         filter_lengths,
+                                                         pool_lengths,
+                                                         **params)
 
     # Reshaping to 1D array for further layers
     flattened = Flatten()(embedded)
@@ -155,7 +161,7 @@ def char_cnn_model_talos(X_train,
                     y_train,
                     validation_data=(X_test, y_test),
                     verbose=0,  # Set to zero if using live plotting of losses
-                    class_weight=params['class_weights'],
+                    class_weight=params['class_weight'],
                     batch_size=params['batch_size'],
                     epochs=params['epochs'])
 

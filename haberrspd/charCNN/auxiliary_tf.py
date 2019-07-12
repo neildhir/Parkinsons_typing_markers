@@ -213,7 +213,11 @@ def character_dense_dropout_block(flattened, units, dropout_rates, **params):
     return flattened
 
 
-def character_1D_convolution_maxpool_block_v2(embedded, **params: dict):
+def character_1D_convolution_maxpool_block_v2(embedded,
+                                              nb_filters,
+                                              filter_lengths,
+                                              pool_lengths,
+                                              **params: dict):
     """
     To be used with char_cnn_model() from Zhang et al.'s paper.
 
@@ -234,10 +238,6 @@ def character_1D_convolution_maxpool_block_v2(embedded, **params: dict):
         [description]
     """
 
-    # Convolutions and MaxPooling
-    nb_filters = [params['conv_output_space']] * params['number_of_filters']
-    filter_lengths = [params['filter_length']] * params['number_of_filters']
-    pool_lengths = [params['pool_length']] * params['number_of_filters']
     assert len(nb_filters) == len(filter_lengths) == len(pool_lengths)
 
     # Create multiple filters on the fly
