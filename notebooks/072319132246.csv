@@ -1,0 +1,3 @@
+round_epochs,val_loss,val_acc,loss,acc,batch_size,conv_activation,conv_bias_initializer,conv_kernel_initializer,conv_output_space,dense_activation,dense_bias_initializer,dense_kernel_initializer,dense_units_layer_2,dense_units_layer_3,dropout,epochs,filter_length,last_activation,loss,max_sentence_length,number_of_filters,optimizer,pool_length
+64,1.1081098603387165,0.743589755306896,0.4583624158732884,0.8322211627851109,64,elu,normal,uniform,16,elu,normal,normal,4,4,0.5,64,10,sigmoid,binary_crossentropy,14000,2,adam,2
+64,1.8068400713113637,0.6581196627046308,0.33581593362800954,0.8198284073826014,64,elu,normal,normal,16,elu,normal,normal,4,4,0.5,64,10,sigmoid,binary_crossentropy,14000,2,adam,2

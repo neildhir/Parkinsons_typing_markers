@@ -157,11 +157,13 @@ def char_cnn_model_talos(X_train,
                   optimizer=params['optimizer'],
                   metrics=['accuracy'])
     # > Fit model
+    print('\n WARNING: Model currently employs hard-coded class weights.\n')
     out = model.fit(X_train,
                     y_train,
                     validation_data=(X_test, y_test),
                     verbose=0,  # Set to zero if using live plotting of losses
-                    class_weight=params['class_weight'],
+                    class_weight={0: 0.7770370370370371, 1: 1.4024064171122994},
+                    # class_weight=params['class_weight'],
                     batch_size=params['batch_size'],
                     epochs=params['epochs'])
 
