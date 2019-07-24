@@ -14,7 +14,11 @@ from keras.layers import (Conv1D,
                           concatenate)
 from keras.models import Model
 from keras.initializers import RandomNormal
+from talos.model import lr_normalizer
+# from talos import live
+# from talos.metrics.keras_metrics import fmeasure_acc
 from keras.backend import int_shape, ndim
+from keras.callbacks import EarlyStopping
 from haberrspd.charCNN.auxiliary_tf import (binarize, binarize_outshape, binarize_outshape_sentence,
                                             character_1D_convolution_maxpool_block_v2,
                                             character_dense_dropout_block,
@@ -81,7 +85,7 @@ def char_cnn_model(max_sentence_length):
                     / "Text Understanding from Scratch"
     """
 
-    # Set the sentence input, which is a sentence which has been one-hot encoded
+    # Set the sentence input
     input_sentence = Input(shape=(max_sentence_length,), dtype='int64')
 
     # Lambda layer that will create a one-hot encoding of a sequence of characters on the fly. Holding one-hot encodings in memory is very inefficient.
@@ -130,12 +134,28 @@ def char_cnn_model_talos(X_train,
     embedded = Lambda(binarize, output_shape=binarize_outshape)(input_sentence)
 
     # Convolutions and MaxPooling
-    nb_filters = [params['conv_output_space']] * params['number_of_filters']
-    filter_lengths = [params['filter_length']] * params['number_of_filters']
-    pool_lengths = [params['pool_length']] * params['number_of_filters']
+    total_filter_count = params['number_of_large_filters'] + params['number_of_small_filters']
+    nb_filters = [params['conv_output_space']] * total_filter_count
+
+    # Large filters
+    large_filter_lengths = [params['large_filter_length']] * params['number_of_large_filters']
+
+    # Small filters
+    small_filter_lengths = [params['small_filter_length']] * params['number_of_small_filters']
+
+    # Pooling
+    if total_filter_count == 2:
+        pool_lengths = [params['pool_length']] * total_filter_count
+    elif total_filter_count > 2:
+        # Follow the paper adopted in the original paper, but with dynamic assignment on size
+        pool_lengths = [None] * total_filter_count  # Basically we do not want to pool too much
+        pool_lengths[0], pool_lengths[1], pool_lengths[-1] = [params['pool_length']] * 3
+    else:
+        raise ValueError
+
     embedded = character_1D_convolution_maxpool_block_v2(embedded,
                                                          nb_filters,
-                                                         filter_lengths,
+                                                         large_filter_lengths + small_filter_lengths,
                                                          pool_lengths,
                                                          **params)
 
@@ -154,16 +174,18 @@ def char_cnn_model_talos(X_train,
 
     # > Compile
     model.compile(loss=params['loss'],
-                  optimizer=params['optimizer'],
-                  metrics=['accuracy'])
+                  optimizer=params['optimizer'](lr=lr_normalizer(params['lr'],
+                                                                 params['optimizer'])),
+                  metrics=['accuracy'])  # , fmeasure_acc])
+
     # > Fit model
-    print('\n WARNING: Model currently employs hard-coded class weights.\n')
     out = model.fit(X_train,
                     y_train,
                     validation_data=(X_test, y_test),
-                    verbose=0,  # Set to zero if using live plotting of losses
+                    verbose=2,  # Set to zero if using live plotting of losses
                     class_weight={0: 0.7770370370370371, 1: 1.4024064171122994},
-                    # class_weight=params['class_weight'],
+                    # Monitor the loss with early stopping
+                    callbacks=[EarlyStopping(patience=5, min_delta=0.0001)],
                     batch_size=params['batch_size'],
                     epochs=params['epochs'])
 

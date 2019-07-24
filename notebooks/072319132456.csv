@@ -1,5 +1,0 @@
-round_epochs,val_loss,val_acc,loss,acc,batch_size,conv_activation,conv_bias_initializer,conv_kernel_initializer,conv_output_space,dense_activation,dense_bias_initializer,dense_kernel_initializer,dense_units_layer_2,dense_units_layer_3,dropout,epochs,filter_length,last_activation,loss,max_sentence_length,number_of_filters,optimizer,pool_length
-64,2.086818980355548,0.5897435933096796,0.3442464482227431,0.8122020966104375,32,elu,normal,uniform,16,elu,normal,normal,4,4,0.5,64,10,sigmoid,binary_crossentropy,14000,2,adam,2
-64,1.6087652730126667,0.6923076943454579,0.30052395592540415,0.8560533844595074,32,elu,normal,normal,16,elu,normal,normal,4,4,0.5,64,10,sigmoid,binary_crossentropy,14000,2,adam,2
-64,1.3744725294602222,0.6324786233086871,0.41288173943047757,0.8713060056060922,64,elu,normal,uniform,16,elu,normal,normal,4,4,0.5,64,10,sigmoid,binary_crossentropy,14000,2,adam,2
-64,0.9461619599252684,0.6495726602709192,0.3802203330059524,0.8207816966268651,64,elu,normal,normal,16,elu,normal,normal,4,4,0.5,64,10,sigmoid,binary_crossentropy,14000,2,adam,2

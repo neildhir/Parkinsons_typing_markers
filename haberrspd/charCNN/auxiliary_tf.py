@@ -3,6 +3,9 @@ import keras
 import matplotlib.pyplot as plt
 import keras.backend as K
 from keras.initializers import RandomNormal
+from keras.preprocessing.text import Tokenizer
+from keras.utils import to_categorical
+from keras.preprocessing.sequence import pad_sequences
 from keras import callbacks
 from keras.layers import Conv1D, Dense, GlobalMaxPool1D, MaxPooling1D, Dropout
 from numpy import array, int64, ones
@@ -157,6 +160,64 @@ def create_training_data(DATA_ROOT, data_string, which_level='sentence'):
     else:
         raise ValueError
 
+
+def create_training_data_keras(DATA_ROOT,
+                               data_string):
+    """
+    This function creats one-hot encoded character -data for the document (=subject)
+    classification model, as well as the sentence classification model. The functionality
+    within is keras specific.
+
+    Parameters
+    ----------
+    DATA_ROOT : str
+        Location of the MJFF data folder
+    data_string : str
+        The .csv file that we want to analyse
+
+    Returns
+    -------
+    tuple
+        Contains the training and test data as well as some parameters
+    """
+    assert type(data_string) is str
+
+    df = read_csv(DATA_ROOT / data_string, header=0)  # MJFF data
+    subject_documents, subjects_diagnoses, alphabet = create_mjff_data_objects(df)
+
+    # Store alphabet size
+    alphabet_size = len(alphabet)
+
+    print('Total number of characters:', alphabet_size)
+    alphabet_indices = dict((c, i) for i, c in enumerate(alphabet))
+
+    # Rounds (up) to nearest thousand
+    max_sentence_length = round(df.Preprocessed_typed_sentence.apply(lambda x: len(x)).max(), -3)
+
+    # Make training data array
+    all_sentences = [item for sublist in subject_documents for item in sublist]
+
+    # Initialise tokenizer which maps characters to integers
+    tk = Tokenizer(num_words=None, char_level=True)
+
+    # Fit to text: convert all chars to ints
+    tk.fit_on_texts(all_sentences)
+
+    # Update alphabet
+    tk.word_index = alphabet_indices
+
+    # Get integer sequences: converts sequences of chars to sequences of ints
+    int_sequences = tk.texts_to_sequences(all_sentences)
+
+    # Pad sequences so that they all have the same length and then one-hot encode
+    X = to_categorical(pad_sequences(int_sequences, maxlen=max_sentence_length, padding='post'))
+
+    # Get labels (diagnoses)
+    y = df.Diagnosis.tolist()
+
+    # Chop up data into train and test sets
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, shuffle=True)
+    return X_train, X_test, y_train, y_test, max_sentence_length
 
 # =============
 # MODEL BLOCKS
