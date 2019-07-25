@@ -128,10 +128,10 @@ def char_cnn_model_talos(X_train,
     """
 
     # Set the sentence input, which is a sentence which has been one-hot encoded
-    input_sentence = Input(shape=(params['max_sentence_length'],), dtype='int64')
+    input_sentence = Input(shape=(params['max_sentence_length'], params['alphabet_size']), dtype='float32')
 
-    # Lambda layer that will create a one-hot encoding of a sequence of characters on the fly. Holding one-hot encodings in memory is very inefficient.
-    embedded = Lambda(binarize, output_shape=binarize_outshape)(input_sentence)
+    # # Lambda layer that will create a one-hot encoding of a sequence of characters on the fly. Holding one-hot encodings in memory is very inefficient.
+    # embedded = Lambda(binarize, output_shape=binarize_outshape)(input_sentence)
 
     # Convolutions and MaxPooling
     total_filter_count = params['number_of_large_filters'] + params['number_of_small_filters']
@@ -153,7 +153,7 @@ def char_cnn_model_talos(X_train,
     else:
         raise ValueError
 
-    embedded = character_1D_convolution_maxpool_block_v2(embedded,
+    embedded = character_1D_convolution_maxpool_block_v2(input_sentence,  # used to be: embedded
                                                          nb_filters,
                                                          large_filter_lengths + small_filter_lengths,
                                                          pool_lengths,
@@ -183,7 +183,8 @@ def char_cnn_model_talos(X_train,
                     y_train,
                     validation_data=(X_test, y_test),
                     verbose=2,  # Set to zero if using live plotting of losses
-                    class_weight={0: 0.7770370370370371, 1: 1.4024064171122994},
+                    class_weight={0: params['control_class_weight'],
+                                  1: params['pd_class_weight']},
                     # Monitor the loss with early stopping
                     callbacks=[EarlyStopping(patience=5, min_delta=0.0001)],
                     batch_size=params['batch_size'],

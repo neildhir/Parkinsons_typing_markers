@@ -217,7 +217,7 @@ def create_training_data_keras(DATA_ROOT,
 
     # Chop up data into train and test sets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, shuffle=True)
-    return X_train, X_test, y_train, y_test, max_sentence_length
+    return X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size
 
 # =============
 # MODEL BLOCKS
