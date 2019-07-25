@@ -1,26 +1,31 @@
-from pathlib import Path
-import datetime
-from sklearn.utils import class_weight
-import talos as ta
-from talos import Deploy, Predict, Restore
-import numpy as np
-from .models_tf import char_cnn_model_talos
-from .auxiliary_tf import create_training_data_keras
-from numpy import vstack, asarray
 import argparse
+import datetime
+import os
+import sys
+from pathlib import Path
+import tensorflow as tf
+
+sys.path.append("..")
 
 
+import numpy as np
+import talos as ta
+from keras.backend.tensorflow_backend import set_session
 from keras.optimizers import Adam, Nadam  # Which optimisers to consider
-
-# Global params live here
-from .globals import *  # TODO: this is bad syntax, fix this
+from numpy import asarray, vstack
+from sklearn.utils import class_weight
+from talos import Deploy, Predict, Restore
 
 # This block is important if we want the memory to grow on the GPU, and not block allocate the whole thing
-import tensorflow as tf
-from keras.backend.tensorflow_backend import set_session
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 set_session(tf.Session(config=config))
+
+import haberrspd.charCNN.globals  # Global params live here
+from haberrspd.charCNN.data_utils_tf import create_training_data_keras
+from haberrspd.charCNN.models_tf import char_cnn_model_talos
+
+
 
 # --- PARSE ADDITIONAL USER SETTINGS
 
@@ -37,7 +42,7 @@ args = parser.parse_args()
 
 DATA_ROOT = Path("../data/") / "MJFF" / "preproc"  # Note the relative path
 X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size = \
-    create_training_data_keras(DATA_ROOT, args.dataset)  # XXX: set data as input to this file
+    create_training_data_keras(DATA_ROOT, args.dataset)
 
 # Class weights are dynamic as the data-loader is stochastic and changes with each run.
 class_weights = dict(zip([0, 1],
@@ -60,18 +65,18 @@ Dynamic optimisation algoritns to choose from in keras.
 
 
 optimisation_parameters = {
-    'lr': (0.1, 10, 3),  # Learning rate
-    'conv_output_space': [4],  # ,8],
-    'number_of_large_filters': [2],
-    'number_of_small_filters': [2],
-    'large_filter_length': [60],
-    'small_filter_length': [5],
-    'pool_length': [2],
+    'lr': (0.1, 10, 5),  # Learning rate
+    'conv_output_space': [4, 8, 16],  # ,8],
+    'number_of_large_filters': [1, 2, 4],
+    'number_of_small_filters': [1, 2, 4],
+    'large_filter_length': [20, 40, 80, 160],
+    'small_filter_length': [5, 10, 20],
+    'pool_length': [2, 4],
     'dense_units_layer_3': [32],
     'dense_units_layer_2': [16],
     'batch_size': [32],
     'epochs': [100],
-    'dropout': [0.05],  # ,0.1,0.2],
+    'dropout': [0.05, 0.1, 0.2],  # ,0.1,0.2],
     'conv_kernel_initializer': ['uniform'],
     'conv_bias_initializer': ['uniform'],
     'dense_kernel_initializer': ['uniform'],

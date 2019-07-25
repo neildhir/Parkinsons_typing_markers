@@ -1,28 +1,30 @@
 """
 This file only hosts _complete models_ all other other functions are found in auxiliary_tf.py
 """
-from keras.layers import (Conv1D,
-                          LSTM,
-                          Bidirectional,
-                          Flatten,
-                          MaxPooling1D,
-                          Dense,
-                          Dropout,
-                          Input,
-                          Lambda,
-                          TimeDistributed,
-                          concatenate)
-from keras.models import Model
-from keras.initializers import RandomNormal
-from talos.model import lr_normalizer
-# from talos import live
-# from talos.metrics.keras_metrics import fmeasure_acc
+
 from keras.backend import int_shape, ndim
 from keras.callbacks import EarlyStopping
-from haberrspd.charCNN.auxiliary_tf import (binarize, binarize_outshape, binarize_outshape_sentence,
-                                            character_1D_convolution_maxpool_block_v2,
-                                            character_dense_dropout_block,
-                                            character_1D_convolution_block)
+from keras.initializers import RandomNormal
+from keras.layers import (LSTM,
+                          Bidirectional,
+                          Conv1D,
+                          Dense,
+                          Dropout,
+                          Flatten,
+                          Input, Lambda, MaxPooling1D, TimeDistributed,
+                          concatenate)
+from keras.models import Model
+from talos.model import lr_normalizer
+
+from .data_utils_tf import (binarize,
+                            binarize_outshape,
+                            binarize_outshape_sentence)
+from .auxiliary_tf import (character_1D_convolution_block,
+                           character_1D_convolution_maxpool_block_v2,
+                           character_dense_dropout_block)
+
+# from talos import live
+# from talos.metrics.keras_metrics import fmeasure_acc
 
 
 def char_lstm_cnn_model(max_sentences_per_subject,
