@@ -3,13 +3,11 @@ import datetime
 import os
 import sys
 from pathlib import Path
-import tensorflow as tf
 
 sys.path.append("..")
-
-
 import numpy as np
 import talos as ta
+import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
 from keras.optimizers import Adam, Nadam  # Which optimisers to consider
 from numpy import asarray, vstack
@@ -22,8 +20,10 @@ config.gpu_options.allow_growth = True
 set_session(tf.Session(config=config))
 
 import haberrspd.charCNN.globals  # Global params live here
-from haberrspd.charCNN.data_utils_tf import create_training_data_keras
+from haberrspd.charCNN.data_utils_tf import (create_training_data_keras,
+                                             size_of_optimisation_space)
 from haberrspd.charCNN.models_tf import char_cnn_model_talos
+
 
 
 
@@ -35,8 +35,19 @@ parser.add_argument('-dataset',
                     type=str,
                     default="EnglishData-preprocessed.csv",
                     help='Dataset to use for hyperparam optimisation [default is EnglishData-preprocessed.csv i.e. time + char information.]')
+parser.add_argument('-fraction_limit',
+                    type=float,
+                    default=None,
+                    help=' The fraction of `params` that will be tested (Default is 5%).')
+parser.add_argument('-round_limit',
+                    type=int,
+                    default=100,
+                    help='Puts a hard limit on the number of parameter permutations that will be entertained.')
 args = parser.parse_args()
 
+# Fraction limit takes priority over the hard limit
+if args.fraction_limit:
+    args.round_limit = None
 
 # --- LOAD DATA
 
@@ -51,38 +62,26 @@ class_weights = dict(zip([0, 1],
 
 # --- HYPERPARMETERS TO OPTIMISE
 
-"""
-Dynamic optimisation algoritns to choose from in keras.
-
-'sgd': SGD,
-'rmsprop': RMSprop,
-'adagrad': Adagrad,
-'adadelta': Adadelta,
-'adam': Adam,
-'adamax': Adamax,
-'nadam': Nadam
-"""
-
-
+# Note that the more parameters we have in here, the longer this is going to take.
 optimisation_parameters = {
-    'lr': (0.1, 10, 5),  # Learning rate
-    'conv_output_space': [4, 8, 16],  # ,8],
+    'lr': (0.1, 10, 5),
+    'conv_output_space': [8, 16, 32],  # ,8],
     'number_of_large_filters': [1, 2, 4],
     'number_of_small_filters': [1, 2, 4],
     'large_filter_length': [20, 40, 80, 160],
     'small_filter_length': [5, 10, 20],
     'pool_length': [2, 4],
-    'dense_units_layer_3': [32],
-    'dense_units_layer_2': [16],
-    'batch_size': [32],
-    'epochs': [100],
-    'dropout': [0.05, 0.1, 0.2],  # ,0.1,0.2],
+    'dense_units_layer_3': [32, 64],
+    'dense_units_layer_2': [16, 32],
+    'batch_size': [16, 32],
+    'epochs': [200],
+    'dropout': (0, 0.5, 5),
     'conv_kernel_initializer': ['uniform'],
     'conv_bias_initializer': ['uniform'],
     'dense_kernel_initializer': ['uniform'],
     'dense_bias_initializer': ['uniform'],
-    'optimizer': [Adam],  # If used this way, these have to explicitly imported
-    'loss': ['binary_crossentropy'],  # Loss functions
+    'optimizer': [Adam, Nadam],  # If used this way, these have to explicitly imported
+    'loss': ['logcosh', 'binary_crossentropy'],  # Loss functions
     'conv_activation': ['relu'],
     'dense_activation': ['relu'],
     'last_activation': ['sigmoid'],
@@ -94,6 +93,10 @@ optimisation_parameters = {
     'pd_class_weight': [class_weights[1]],
 }
 
+space_size = size_of_optimisation_space(optimisation_parameters)
+print('\nThe _RAW_ (i.e. not-yet-reduced) parameter permutation space is: {}\n'.format(space_size))
+if args.fraction_limit:
+    print('The reduced permutation optimisation space is of size: {}\n'.format(int(space_size * args.fraction_limit)))
 
 # --- RUN OPTIMISATION
 
@@ -101,10 +104,11 @@ scanner = ta.Scan(x=X_train,
                   y=asarray(y_train).reshape(-1, 1),
                   x_val=X_test,
                   y_val=asarray(y_test).reshape(-1, 1),
+                  round_limit=args.round_limit,  # Hard limit on the number of permutations we test
+                  fraction_limit=args.fraction_limit,  # Percentage of permutation space to explore
                   model=char_cnn_model_talos,
                   disable_progress_bar=False,
                   params=optimisation_parameters)
-# grid_downsample=0.01,  # Randomly samples 1% of the grid
 
 # --- STORE RESULTS FOR FUTURE USE
 
@@ -126,4 +130,6 @@ np.savetxt("label_and_label_probs_" + time_and_date + ".csv",
            delimiter=",")
 
 # Save whole model for later use
-Deploy(scan_object=scanner, model_name='talos_best_model_' + time_and_date, metric='val_acc')
+Deploy(scan_object=scanner,
+       model_name='talos_best_model_' + time_and_date,
+       metric='val_acc')

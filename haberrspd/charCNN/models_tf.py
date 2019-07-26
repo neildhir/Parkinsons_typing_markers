@@ -188,7 +188,7 @@ def char_cnn_model_talos(X_train,
                     class_weight={0: params['control_class_weight'],
                                   1: params['pd_class_weight']},
                     # Monitor the loss with early stopping
-                    callbacks=[EarlyStopping(patience=5, min_delta=0.0001)],
+                    callbacks=[EarlyStopping(patience=5, min_delta=0.001)],
                     batch_size=params['batch_size'],
                     epochs=params['epochs'])
 

@@ -1,12 +1,23 @@
 import keras.backend as K
+from keras import callbacks
+from keras.preprocessing.sequence import pad_sequences
 from keras.preprocessing.text import Tokenizer
 from keras.utils import to_categorical
-from keras.preprocessing.sequence import pad_sequences
-from keras import callbacks
 from numpy import array, int64, ones
 from pandas import read_csv
 from sklearn.model_selection import train_test_split
 from tensorflow import cast, float32, one_hot
+
+
+def size_of_optimisation_space(params):
+    space = 1
+    for attribute in params.keys():
+        if type(attribute) == tuple:
+            space *= params[attribute][-1]
+        else:
+            space *= len(params[attribute])
+
+    return space
 
 
 def binarize(x):
