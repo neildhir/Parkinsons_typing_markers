@@ -167,6 +167,7 @@ def create_training_data(DATA_ROOT, data_string, which_level='sentence'):
 
 
 def create_training_data_keras(DATA_ROOT,
+                               which_information,
                                data_string):
     """
     This function creats one-hot encoded character -data for the document (=subject)
@@ -187,7 +188,7 @@ def create_training_data_keras(DATA_ROOT,
     """
     assert type(data_string) is str
 
-    df = read_csv(DATA_ROOT / data_string, header=0)  # MJFF data
+    df = read_csv(DATA_ROOT / which_information / data_string, header=0)  # MJFF data
     subject_documents, subjects_diagnoses, alphabet = create_mjff_data_objects(df)
 
     # Store alphabet size
@@ -196,8 +197,12 @@ def create_training_data_keras(DATA_ROOT,
     print('Total number of characters:', alphabet_size)
     alphabet_indices = dict((c, i) for i, c in enumerate(alphabet))
 
-    # Rounds (up) to nearest thousand
-    max_sentence_length = round(df.Preprocessed_typed_sentence.apply(lambda x: len(x)).max(), -3)
+    if which_information == "char_time" or which_information == "char_time_space":
+        # Rounds (up) to nearest thousand
+        max_sentence_length = round(df.Preprocessed_typed_sentence.apply(lambda x: len(x)).max(), -3)
+    if which_information == "char":
+        # Rounds (up) to nearest hundred
+        max_sentence_length = round(df.Preprocessed_typed_sentence.apply(lambda x: len(x)).max(), -2)
 
     # Make training data array
     all_sentences = [item for sublist in subject_documents for item in sublist]

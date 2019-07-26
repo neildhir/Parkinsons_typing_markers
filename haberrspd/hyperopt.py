@@ -54,9 +54,11 @@ if args.fraction_limit:
 
 # --- LOAD DATA
 
-DATA_ROOT = Path("../data/") / "MJFF" / "preproc" / args.which_information
+DATA_ROOT = Path("../data/") / "MJFF" / "preproc"
 X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size = \
-    create_training_data_keras(DATA_ROOT, args.dataset)
+    create_training_data_keras(DATA_ROOT,
+                               args.which_information,
+                               args.dataset)
 
 # Class weights are dynamic as the data-loader is stochastic and changes with each run.
 class_weights = dict(zip([0, 1],
@@ -71,8 +73,8 @@ optimisation_parameters = {
     'conv_output_space': [8, 16, 32],  # ,8],
     'number_of_large_filters': [1, 2, 4],
     'number_of_small_filters': [1, 2, 4],
-    'large_filter_length': [20, 40, 80, 160], # When time is included [20,40,80,160], when not: [10,20,40,80]
-    'small_filter_length': [5, 10, 20],
+    'large_filter_length': [5,10,20], # When time is included [20,40,80,160], when not: [10,20,40,80]
+    'small_filter_length': [2,4,8],#[5, 10, 20],
     'pool_length': [2, 4],
     'dense_units_layer_3': [32, 64],
     'dense_units_layer_2': [16, 32],
@@ -115,6 +117,10 @@ scanner = ta.Scan(x=X_train,
 
 # --- STORE RESULTS FOR FUTURE USE
 
+my_dir ='../results/' + args.which_information
+if not os.path.exists(my_dir):
+    os.makedirs(my_dir)
+
 # Query best learned model
 probs = Predict(scanner)  # XXX: set options for the method properly
 
@@ -127,12 +133,19 @@ for i, (y, x) in enumerate(zip(y_test, X_test)):
 time_and_date = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
 # Save array for later use
-np.savetxt("label_and_label_probs_" + time_and_date + ".csv",
+np.savetxt('../results/' + args.which_information + '/' + "label_and_label_probs_" + time_and_date + ".csv",
            labels_and_label_probs,
            fmt='%.15f',
            delimiter=",")
 
 # Save whole model for later use
+best_model_file = 'talos_best_model_' + time_and_date
 Deploy(scan_object=scanner,
-       model_name='talos_best_model_' + time_and_date,
+       model_name=best_model_file,
        metric='val_acc')
+
+# Deploy is stupid, hence just move the file
+os.rename(best_model_file + '.zip', my_dir + '/' + best_model_file + '.zip')
+
+# Move talos' history file too
+os.system('mv *.csv ../results/' + args.which_information)
