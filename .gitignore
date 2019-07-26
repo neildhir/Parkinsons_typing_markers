@@ -1,6 +1,5 @@
 # Ignore data folder so we don't push the data to the repo
 data/
-results/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
