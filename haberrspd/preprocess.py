@@ -7,12 +7,14 @@ from itertools import groupby
 from operator import itemgetter
 from pathlib import Path
 from typing import Tuple
-from nltk.metrics import edit_distance  # Levenshtein
+
 import numpy as np
 import pandas as pd
+from nltk.metrics import edit_distance  # Levenshtein
+from scipy.stats import gamma, gengamma, lognorm
 from sklearn.model_selection import train_test_split
+
 from .__init_paths import data_root
-from scipy.stats import (gamma, lognorm, gengamma)
 
 
 class preprocessMJFF:
@@ -24,15 +26,15 @@ class preprocessMJFF:
     def __init__(self):
         print('\tMichael J. Fox Foundation PD copy-typing data.\n')
 
-    def __call__(self, get_language: str = 'english') -> pd.DataFrame:
+    def __call__(self, get_language: str = 'english', include_time=True) -> pd.DataFrame:
 
         assert get_language in ['english', 'spanish', 'all'], "You must pass a valid option."
 
         if get_language == 'all':
             # Load English MJFF data
-            df_english, _ = create_long_form_MJFF_dataset('english')
+            df_english, _ = create_MJFF_dataset('english', include_time)
             # Load Spanish MJFF data
-            df_spanish, _ = create_long_form_MJFF_dataset('spanish')
+            df_spanish, _ = create_MJFF_dataset('spanish', include_time)
             # Merge datasets
             assert all(df_english.columns == df_spanish.columns)
             df = pd.concat([df_english, df_spanish], ignore_index=True)
@@ -40,7 +42,7 @@ class preprocessMJFF:
             mjff_dataset_stats(df)
             return df
         else:
-            df, _ = create_long_form_MJFF_dataset(get_language)
+            df, _ = create_MJFF_dataset(get_language, include_time)
             # Print summary stats of what we have loaded.
             mjff_dataset_stats(df)
             return df
@@ -203,6 +205,47 @@ def create_char_compression_time_mjff_data(df: pd.DataFrame,
             char_compression_sentences[subj_idx][sent_idx] = ''.join(char_compression_sentences[subj_idx][sent_idx])
 
     return char_compression_sentences
+
+
+def create_char_mjff_data(df: pd.DataFrame,
+                          char_count_response_threshold=40) -> Tuple[dict, list]:
+
+    assert set(['participant_id', 'key', 'timestamp', 'sentence_id']).issubset(df.columns)
+    # Filter out responses where the number of characters per typed
+    # response, is below a threshold value (40 by default)
+    df = df[df.groupby(['participant_id', 'sentence_id']).key.transform('count') > char_count_response_threshold]
+    assert not df.empty
+
+    # Get the unique number of subjects
+    subjects = sorted(set(df.participant_id))  # NOTE: set() is weakly random
+
+    # All sentences will be stored here, indexed by their type
+    char_sentences = defaultdict(dict)
+
+    # Loop over subjects
+    for subj_idx in subjects:
+        # Not all subjects have typed all sentences hence we have to do it this way
+        for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
+
+            # Locate df segment to extract
+            coordinates = (df.participant_id == subj_idx) & (df.sentence_id == sent_idx)
+
+            # "correct" the sentence by operating on user backspaces
+            corrected_char_sentence, _ = backspace_corrector(df.loc[coordinates, "key"].tolist())
+
+            # Make long-format version of each typed, corrected, sentence
+            # Note that we remove the last character to make the calculation correct.
+            char_sentences[subj_idx][sent_idx] = corrected_char_sentence
+
+    # No one likes an empty list so we remove them here
+    for subj_idx in subjects:
+        # Not all subjects have typed all sentences hence we have to do it this way
+        for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
+            # Combines sentences to contiguous sequences (if not empty)
+            # if not char_compression_sentences[subj_idx][sent_idx]:
+            char_sentences[subj_idx][sent_idx] = ''.join(char_sentences[subj_idx][sent_idx])
+
+    return char_sentences
 
 
 def flatten(my_list):
@@ -610,7 +653,7 @@ def remap_English_MJFF_participant_ids(df):
     return df.replace({'Patient_ID': replacement_ids})
 
 
-def create_long_form_MJFF_dataset(language='english') -> Tuple[pd.DataFrame, pd.DataFrame]:
+def create_MJFF_dataset(language='english', include_time=True) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     End-to-end creation of raw data to NLP readable train and test sets.
 
@@ -655,8 +698,14 @@ def create_long_form_MJFF_dataset(language='english') -> Tuple[pd.DataFrame, pd.
     # Get the tuple (sentence ID, reference sentence) as a dataframe
     reference_sentences = df.loc[:, ['sentence_id', 'sentence_text']].drop_duplicates().reset_index(drop=True)
 
-    # Creates long sequences with characters repeated for IKI number of steps
-    out = create_char_compression_time_mjff_data(df)
+    if include_time:
+        # This option includes information on: character and timing
+
+        # Creates long sequences with characters repeated for IKI number of steps
+        out = create_char_compression_time_mjff_data(df)
+    else:
+        # This option _only_ includes the characters.
+        out = create_char_mjff_data(df)
 
     # Final formatting of typing data
     df = create_dataframe_from_processed_data(out, df_meta).reset_index(drop=True)

@@ -30,19 +30,22 @@ from haberrspd.charCNN.models_tf import char_cnn_model_talos
 # --- PARSE ADDITIONAL USER SETTINGS
 
 parser = argparse.ArgumentParser(description='CNN text classifier.')
-# dataset
+parser.add_argument('-which_information',
+                    type=str,
+                    default="char_time",
+                    help='Tells the model which type of data to use for the optimisation.')
 parser.add_argument('-dataset',
                     type=str,
                     default="EnglishData-preprocessed.csv",
                     help='Dataset to use for hyperparam optimisation [default is EnglishData-preprocessed.csv i.e. time + char information.]')
-parser.add_argument('-fraction_limit',
-                    type=float,
-                    default=None,
-                    help=' The fraction of `params` that will be tested (Default is 5%).')
 parser.add_argument('-round_limit',
                     type=int,
                     default=100,
                     help='Puts a hard limit on the number of parameter permutations that will be entertained.')
+parser.add_argument('-fraction_limit',
+                    type=float,
+                    default=None,
+                    help=' The fraction of `params` that will be tested (Default is 5%).')
 args = parser.parse_args()
 
 # Fraction limit takes priority over the hard limit
@@ -51,7 +54,7 @@ if args.fraction_limit:
 
 # --- LOAD DATA
 
-DATA_ROOT = Path("../data/") / "MJFF" / "preproc"  # Note the relative path
+DATA_ROOT = Path("../data/") / "MJFF" / "preproc" / args.which_information
 X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size = \
     create_training_data_keras(DATA_ROOT, args.dataset)
 
@@ -68,7 +71,7 @@ optimisation_parameters = {
     'conv_output_space': [8, 16, 32],  # ,8],
     'number_of_large_filters': [1, 2, 4],
     'number_of_small_filters': [1, 2, 4],
-    'large_filter_length': [20, 40, 80, 160],
+    'large_filter_length': [20, 40, 80, 160], # When time is included [20,40,80,160], when not: [10,20,40,80]
     'small_filter_length': [5, 10, 20],
     'pool_length': [2, 4],
     'dense_units_layer_3': [32, 64],
