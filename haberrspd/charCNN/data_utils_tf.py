@@ -3,10 +3,11 @@ from keras import callbacks
 from keras.preprocessing.sequence import pad_sequences
 from keras.preprocessing.text import Tokenizer
 from keras.utils import to_categorical
-from numpy import array, int64, ones
+from numpy import array, int64, ones, hstack, pad, einsum, dstack
 from pandas import read_csv
 from sklearn.model_selection import train_test_split
 from tensorflow import cast, float32, one_hot
+import itertools
 
 
 def size_of_optimisation_space(params):
@@ -188,7 +189,12 @@ def create_training_data_keras(DATA_ROOT,
     """
     assert type(data_string) is str
 
-    df = read_csv(DATA_ROOT / which_information / data_string, header=0)  # MJFF data
+    if which_information == "char_time_space":
+        # Get relevant long-format data
+        df = read_csv(DATA_ROOT / 'char_time' / data_string, header=0)  # MJFF data
+    else:
+        df = read_csv(DATA_ROOT / which_information / data_string, header=0)  # MJFF data
+
     subject_documents, subjects_diagnoses, alphabet = create_mjff_data_objects(df)
 
     # Store alphabet size
@@ -222,9 +228,52 @@ def create_training_data_keras(DATA_ROOT,
     # Pad sequences so that they all have the same length and then one-hot encode
     X = to_categorical(pad_sequences(int_sequences, maxlen=max_sentence_length, padding='post'))
 
+    if which_information == 'char_time_space':
+        # Load relevant keyboard
+        keyboard = us_standard_layout_keyboard()  # OBS: nested list
+        # Check that all chars are in fact in our "keyboard" -- if not, we cannot map a coordinate
+        assert alphabet.issubset(set(list(itertools.chain.from_iterable(keyboard))))
+        space = [english_keys_to_2d_coordinates(sentence, keyboard) for sentence in all_sentences]
+        space_padded = [pad(s, [(0, max_sentence_length - len(s)), (0, 0)], mode='constant') for s in space]
+        # Append coordinates to one-hot encoded sentences
+        X = einsum('ijk->kij', dstack([hstack((x, s)) for (x, s) in zip(X, space_padded)]))
+
     # Get labels (diagnoses)
     y = df.Diagnosis.tolist()
 
     # Chop up data into train and test sets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, shuffle=True)
     return X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size
+
+
+def us_standard_layout_keyboard():
+    # Lower caps
+    kb_row_0 = ["`", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=", ""]
+    kb_row_1 = ["", "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]", ""]
+    kb_row_2 = ["", "a", "s", "d", "f", "g", "h", "j", "k", "l", ";", "'", "", ""]
+    kb_row_3 = ["\\", "z", "x", "c", "v", "b", "n", "m", ",", ".", "/", "", "", ""]
+    kb_row_4 = ["", "", "", " ", " ", " ", " ", " ", " ", "", "", "", "", ""]  # Space bar
+    # Upper caps
+    kb_row_0_u = ["~", "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "_", "+", ""]
+    kb_row_1_u = ["", "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "{", "}", "|"]
+    kb_row_2_u = ["", "A", "S", "D", "F", "G", "H", "J", "K", "L", ":", "", "", ""]
+    kb_row_3_u = ["", "Z", "X", "C", "V", "B", "N", "M", "<", ">", "?", "", "", ""]
+    keyboard = [kb_row_0, kb_row_1, kb_row_2, kb_row_3, kb_row_4,
+                kb_row_0_u, kb_row_1_u, kb_row_2_u, kb_row_3_u]
+
+    return keyboard
+
+
+def english_keys_to_2d_coordinates(typed_sentence, keyboard):
+
+    # TODO: double check which layout was actually used for MJFF data.
+
+    # Store individual key coordinates here
+    coordinates = []
+    for c in typed_sentence:
+        for i, r in enumerate(keyboard):
+            try:
+                coordinates.append((i, r.index(c)))
+            except:
+                pass
+    return array(coordinates)

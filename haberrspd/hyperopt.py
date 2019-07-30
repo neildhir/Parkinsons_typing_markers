@@ -67,15 +67,20 @@ class_weights = dict(zip([0, 1],
 
 # --- HYPERPARMETERS TO OPTIMISE
 
+if args.which_information == 'char_time_space':
+    # Add the coordinate size to alphabet size so that convolutions adapt
+    alphabet_size += 2
+
+
 # Note that the more parameters we have in here, the longer this is going to take.
 optimisation_parameters = {
     'lr': (0.1, 10, 5),
     'conv_output_space': [8, 16, 32],  # ,8],
     'number_of_large_filters': [1, 2, 4],
     'number_of_small_filters': [1, 2, 4],
-    'large_filter_length': [5,10,20], # When time is included [20,40,80,160], when not: [10,20,40,80]
-    'small_filter_length': [2,4,8],#[5, 10, 20],
-    'pool_length': [2, 4],
+    'large_filter_length': [8,16], # When time is included [20,40,80,160], when not: [10,20,40,80]
+    'small_filter_length': [2,4],#[5, 10, 20],
+    'pool_length': [2],
     'dense_units_layer_3': [32, 64],
     'dense_units_layer_2': [16, 32],
     'batch_size': [16, 32],
