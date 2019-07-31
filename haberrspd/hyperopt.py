@@ -78,14 +78,15 @@ optimisation_parameters = {
     'conv_output_space': [8, 16, 32],  # ,8],
     'number_of_large_filters': [1, 2, 4],
     'number_of_small_filters': [1, 2, 4],
-    'large_filter_length': [8,16], # When time is included [20,40,80,160], when not: [10,20,40,80]
-    'small_filter_length': [2,4],#[5, 10, 20],
+    'large_filter_length': [8,16,32], # When time is included [20,40,80,160], when not: [10,20,40,80]
+    'small_filter_length': [2,4,8],#[5, 10, 20],
     'pool_length': [2],
     'dense_units_layer_3': [32, 64],
     'dense_units_layer_2': [16, 32],
-    'batch_size': [16, 32],
+    'batch_size': [16, 32, 64],
     'epochs': [200],
     'dropout': (0, 0.5, 5),
+    'conv_padding': ['same'],
     'conv_kernel_initializer': ['uniform'],
     'conv_bias_initializer': ['uniform'],
     'dense_kernel_initializer': ['uniform'],

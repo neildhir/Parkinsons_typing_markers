@@ -5,8 +5,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objs as go
-from flair.data import Sentence
-from flair.models import TextClassifier
+# from flair.data import Sentence
+# from flair.models import TextClassifier
 from pandas import read_csv, DataFrame
 from plotly.offline import download_plotlyjs, init_notebook_mode, iplot, plot
 from sklearn.manifold import TSNE
@@ -32,6 +32,54 @@ def get_flair_labels_and_label_probabilities():
             predicted_labels_probs.append(label.score)
 
     return predicted_labels, predicted_labels_probs
+
+
+def plot_roc_curve_simple(y_true,
+                          y_scores,
+                          filename=None,
+                          save_me=False):
+    """
+    Plot receiver-operating curve.
+
+    TODO: this plot cannot use the same aspect ratio as all the other plots. Fix this!
+
+    Parameters
+    ----------
+    y_true : array-like
+        List or array containing the TRUE labels
+    y_scores : array-like
+        List or array containing the probabilities of the predicted labels
+    filename : str
+        Descriptive filename
+    """
+
+    # Main calculations here
+    fpr, tpr, _ = roc_curve(y_true, y_scores, pos_label=1)
+    # Calculate area under the ROC curve here
+    auc = np.trapz(tpr, fpr)
+
+    fig, ax = plt.subplots(1, 1, figsize=(7, 7))
+    lw = 2
+    ax.plot(fpr, tpr, color='darkorange',
+            lw=lw, label='ROC curve (area = %0.2f)' % auc)
+    ax.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+    ax.set_xlim([0.0, 1.0])
+    ax.set_ylim([0.0, 1.05])
+    ax.set_xlabel('False Positive Rate')
+    ax.set_ylabel('True Positive Rate')
+    ax.set_title('Receiver Operating Curve')
+    ax.legend(loc="lower right")
+
+    if save_me:
+        assert filename is not None
+        # Set reference time for save
+        now = datetime.datetime.now()
+        fig.savefig('../illustrations/roc_curve-'
+                    + filename + '-'
+                    + now.strftime("%Y-%m-%d-%H:%M")
+                    + '.pdf', bbox_inches='tight')
+
+    plt.show()
 
 
 def plot_roc_curve(labels, label_probs, save_me=False):

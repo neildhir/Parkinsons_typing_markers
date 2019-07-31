@@ -92,6 +92,7 @@ def character_1D_convolution_maxpool_block_v2(embedded,
         # Convolution
         embedded = Conv1D(filters=nb_filters[i],
                           kernel_size=filter_lengths[i],
+                          padding=params['conv_padding'],
                           kernel_initializer=params['conv_kernel_initializer'],
                           bias_initializer=params['conv_bias_initializer'],
                           activation=params['conv_activation'])(embedded)
