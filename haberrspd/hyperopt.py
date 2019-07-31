@@ -139,7 +139,7 @@ for i, (y, x) in enumerate(zip(y_test, X_test)):
 time_and_date = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
 # Save array for later use
-np.savetxt('../results/' + args.which_information + '/' + "label_and_label_probs_" + time_and_date + ".csv",
+np.savetxt('../results/' + args.which_information + '/' + "label_and_label_probs_" + time_and_date + str(args.fraction_limit) + ".csv",
            labels_and_label_probs,
            fmt='%.15f',
            delimiter=",")
