@@ -61,8 +61,7 @@ X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size = \
                                args.dataset)
 
 # Class weights are dynamic as the data-loader is stochastic and changes with each run.
-class_weights = dict(zip([0, 1],
-                         class_weight.compute_class_weight('balanced', list(set(y_train)), y_train)))
+class_weights = dict(zip([0, 1], class_weight.compute_class_weight('balanced', list(set(y_train)), y_train)))
 
 
 # --- HYPERPARMETERS TO OPTIMISE

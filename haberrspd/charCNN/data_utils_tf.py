@@ -222,6 +222,19 @@ def create_training_data_keras(DATA_ROOT,
     # Update alphabet
     tk.word_index = alphabet_indices
 
+    if feat_type == 'doc':
+        raise NotImplementedError
+        # If we are using document features
+        X = []
+        for doc in subject_documents:
+            # Create integer representations of subject's written sentences
+            tmp_int_docs = tk.texts_to_sequences(doc)
+            # Pad sequences so that they all have the same length and then one-hot encode
+            X.append(to_categorical(pad_sequences(tmp_int_docs, maxlen=max_sentence_length, padding='post')))
+
+        if which_information == 'char_time_space':
+            raise NotImplementedError
+
     # Get integer sequences: converts sequences of chars to sequences of ints
     int_sequences = tk.texts_to_sequences(all_sentences)
 
@@ -247,6 +260,23 @@ def create_training_data_keras(DATA_ROOT,
 
 
 def us_standard_layout_keyboard():
+    """
+    Keyboard layout used for the MJFF data.
+
+    For details see: https://www.nature.com/articles/s41598-019-39294-z/figures/5
+
+    Parameters
+    ----------
+    typed_sentence : [type]
+        [description]
+    keyboard : [type]
+        [description]
+
+    Returns
+    -------
+    [type]
+        [description]
+    """
     # Lower caps
     kb_row_0 = ["`", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=", ""]
     kb_row_1 = ["", "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]", ""]
@@ -265,8 +295,6 @@ def us_standard_layout_keyboard():
 
 
 def english_keys_to_2d_coordinates(typed_sentence, keyboard):
-
-    # TODO: double check which layout was actually used for MJFF data.
 
     # Store individual key coordinates here
     coordinates = []
