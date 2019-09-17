@@ -16,6 +16,24 @@ from sklearn.model_selection import train_test_split
 
 from .__init_paths import data_root
 
+def calculate_edit_distance_between_response_and_target_MRC(df):
+    subjects = sorted(set(df.participant_id))  # NOTE: set() is weakly random# Store edit distances here
+    edit_distances_df = pd.DataFrame(index=subjects,
+                                     columns=range(1,16)) # 15 unique sentences
+    # Loop over subjects
+    for subj_idx in subjects:
+        # Not all subjects have typed all sentences hence we have to do it this way
+        for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
+            if sent_idx < 16:
+                # Locate df segment to extract
+                coordinates = (df.participant_id == subj_idx) & (df.sentence_id == sent_idx)
+                # Calculate the edit distance
+                edit_distances_df.loc[subj_idx, sent_idx] = edit_distance(df.loc[coordinates, "response_content"].unique().tolist()[0],
+                                                                          df.loc[coordinates, "sentence_content"].unique().tolist()[0])
+
+    return edit_distances_df
+
+# MJFF
 
 class preprocessMJFF:
     """
