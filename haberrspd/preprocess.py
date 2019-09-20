@@ -37,26 +37,31 @@ def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
     remove_typed_sentences_with_high_edit_distance(df)
     remove_sentences_with_arrow_keys(df)
     # Replace following keys with UNK
-    replaceable_keys = [
-        "ArrowDown",
-        "ArrowUp",
-        "ContextMenu",
-        "Delete",
-        "End",
-        "Enter",
-        "F11",
-        "F16",
-        "\n",
-        "Home",
-        "Insert",
-        "MediaPreviousTrack",
-        "None",
-        "NumLock",
-        "PageDown",
-        "Process",
-        "Unidentified",
-    ]
-    df.key.replace(replaceable_keys, "<UNK>", inplace=True)
+    df.key.replace(
+        [
+            "ArrowDown",
+            "ArrowUp",
+            "ContextMenu",
+            "Delete",
+            "End",
+            "Enter",
+            "F11",
+            "F16",
+            "\n",
+            "Home",
+            "Insert",
+            "MediaPreviousTrack",
+            "None",
+            "NumLock",
+            "PageDown",
+            "Process",
+            "Unidentified",
+        ],
+        "<UNK>",
+        inplace=True,
+    )
+    # Change backspace indicator to match MJFF data for simplicity
+    df.key.replace("Backspace", "backspace", inplace=True)
     return df
 
 
