@@ -37,12 +37,9 @@ def binarize(x):
         A one-hot encoded tensor-representation of a character
     """
     # TODO: double-check how this encoding actually prints out [ 0 0 0 0 1 ...] etc
-    return cast(one_hot(x,
-                        K.alphabet_size,
-                        on_value=1,
-                        off_value=0,
-                        axis=-1),
-                float32)  # TODO: check precision
+    return cast(
+        one_hot(x, K.alphabet_size, on_value=1, off_value=0, axis=-1), float32
+    )  # TODO: check precision
 
 
 def binarize_outshape(in_shape):
@@ -50,7 +47,7 @@ def binarize_outshape(in_shape):
 
 
 def binarize_outshape_sentence(in_shape):
-    return in_shape[1],  K.alphabet_size
+    return in_shape[1], K.alphabet_size
 
 
 class LossHistory(callbacks.Callback):
@@ -59,8 +56,8 @@ class LossHistory(callbacks.Callback):
         self.accuracies = []
 
     def on_batch_end(self, batch, logs={}):
-        self.losses.append(logs.get('loss'))
-        self.accuracies.append(logs.get('acc'))
+        self.losses.append(logs.get("loss"))
+        self.accuracies.append(logs.get("acc"))
 
 
 def create_mjff_data_objects(df):
@@ -68,23 +65,33 @@ def create_mjff_data_objects(df):
     Note that the interpretation here is that each document is comensurate with a subject
     in the dataset.
     """
-    subject_documents = []  # Contains on the index all sentences typed by a particular subject
-    subject_diagnoses = []  # Contains on the index, the PD diagnosis of a particular subject
+    subject_documents = (
+        []
+    )  # Contains on the index all sentences typed by a particular subject
+    subject_diagnoses = (
+        []
+    )  # Contains on the index, the PD diagnosis of a particular subject
 
     for i in df.Patient_ID.drop_duplicates():
         # Ensure that all sentences are lower-case (this improves inference further down the pipe)
-        subject_documents.append(df.loc[(df.Patient_ID == i)].Preprocessed_typed_sentence.str.lower().tolist())
+        subject_documents.append(
+            df.loc[(df.Patient_ID == i)]
+            .Preprocessed_typed_sentence.str.lower()
+            .tolist()
+        )
 
         # XXX: This returns one diagnosis per patient, but we may want one diagnosis per sentence
-        subject_diagnoses.append(df.loc[(df.Patient_ID == i)].Diagnosis.drop_duplicates().tolist()[0])
+        subject_diagnoses.append(
+            df.loc[(df.Patient_ID == i)].Diagnosis.drop_duplicates().tolist()[0]
+        )
 
     # Get the unique set of characters in the alphabet
-    alphabet = set(''.join([item for sublist in subject_documents for item in sublist]))
+    alphabet = set("".join([item for sublist in subject_documents for item in sublist]))
 
     return subject_documents, subject_diagnoses, alphabet
 
 
-def create_training_data(DATA_ROOT, data_string, which_level='sentence'):
+def create_training_data(DATA_ROOT, data_string, which_level="sentence"):
     """
     This function creats one-hot encoded character -data for the document (=subject)
     classification model, as well as the sentence classification model.
@@ -109,7 +116,7 @@ def create_training_data(DATA_ROOT, data_string, which_level='sentence'):
         If we have passed a level option which doesn't exist.
     """
     assert type(data_string) is str
-    assert which_level in ['sentence', 'document']
+    assert which_level in ["sentence", "document"]
 
     df = read_csv(DATA_ROOT / data_string, header=0)  # MJFF data
     subject_documents, subjects_diagnoses, alphabet = create_mjff_data_objects(df)
@@ -117,21 +124,33 @@ def create_training_data(DATA_ROOT, data_string, which_level='sentence'):
     # Store alphabet size
     alphabet_size = len(alphabet)
     # Make the size available to the binarize functions
-    setattr(K, 'alphabet_size', alphabet_size)
+    setattr(K, "alphabet_size", alphabet_size)
 
-    print('Total number of characters:', alphabet_size)
+    print("Total number of characters:", alphabet_size)
     alphabet_indices = dict((c, i) for i, c in enumerate(alphabet))
     indices_alphabet = dict((i, c) for i, c in enumerate(alphabet))
 
     # Rounds (up) to nearest thousand
-    max_sentence_length = round(df.Preprocessed_typed_sentence.apply(lambda x: len(x)).max(), -3)
+    max_sentence_length = round(
+        df.Preprocessed_typed_sentence.apply(lambda x: len(x)).max(), -3
+    )
 
     # Populate the training array
-    if which_level == 'document':
+    if which_level == "document":
         # Note here that the first MJFF data has each subject on 15 written sentences
         max_sentences_per_subject = 30
         # Make training data array
-        X = ones((len(subject_documents), max_sentences_per_subject, max_sentence_length), dtype=int64) * -1
+        X = (
+            ones(
+                (
+                    len(subject_documents),
+                    max_sentences_per_subject,
+                    max_sentence_length,
+                ),
+                dtype=int64,
+            )
+            * -1
+        )
         # Make a target array from binary diagnoses
         y = array(subjects_diagnoses)
         for i, doc in enumerate(subject_documents):
@@ -141,14 +160,23 @@ def create_training_data(DATA_ROOT, data_string, which_level='sentence'):
                         # XXX: this is in reverse order
                         X[i, j, (max_sentence_length - 1 - t)] = alphabet_indices[char]
 
-        print('Sample X (encoded sentence): {}'.format(X[13, 2]))
-        print('Target y (1: PD; 0: control): {}'.format(y[13]))
+        print("Sample X (encoded sentence): {}".format(X[13, 2]))
+        print("Target y (1: PD; 0: control): {}".format(y[13]))
 
         # Chop up data into train and test sets
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True)
-        return X_train, X_test, y_train, y_test, max_sentences_per_subject, max_sentence_length
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, shuffle=True
+        )
+        return (
+            X_train,
+            X_test,
+            y_train,
+            y_test,
+            max_sentences_per_subject,
+            max_sentence_length,
+        )
 
-    elif which_level == 'sentence':
+    elif which_level == "sentence":
         # Make training data array
         all_sentences = [item for sublist in subject_documents for item in sublist]
         X = ones((len(all_sentences), max_sentence_length), dtype=int64) * -1
@@ -160,16 +188,16 @@ def create_training_data(DATA_ROOT, data_string, which_level='sentence'):
                 X[j, t] = alphabet_indices[char]
 
         # Chop up data into train and test sets
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, shuffle=True)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.1, shuffle=True
+        )
         return X_train, X_test, y_train, y_test, max_sentence_length
 
     else:
         raise ValueError
 
 
-def create_training_data_keras(DATA_ROOT,
-                               which_information,
-                               data_string):
+def create_training_data_keras(DATA_ROOT, which_information, data_string):
     """
     This function creats one-hot encoded character -data for the document (=subject)
     classification model, as well as the sentence classification model. The functionality
@@ -191,24 +219,30 @@ def create_training_data_keras(DATA_ROOT,
 
     if which_information == "char_time_space":
         # Get relevant long-format data
-        df = read_csv(DATA_ROOT / 'char_time' / data_string, header=0)  # MJFF data
+        df = read_csv(DATA_ROOT / "char_time" / data_string, header=0)  # MJFF data
     else:
-        df = read_csv(DATA_ROOT / which_information / data_string, header=0)  # MJFF data
+        df = read_csv(
+            DATA_ROOT / which_information / data_string, header=0
+        )  # MJFF data
 
     subject_documents, subjects_diagnoses, alphabet = create_mjff_data_objects(df)
 
     # Store alphabet size
     alphabet_size = len(alphabet)
 
-    print('Total number of characters:', alphabet_size)
+    print("Total number of characters:", alphabet_size)
     alphabet_indices = dict((c, i) for i, c in enumerate(alphabet))
 
     if which_information == "char_time" or which_information == "char_time_space":
         # Rounds (up) to nearest thousand
-        max_sentence_length = round(df.Preprocessed_typed_sentence.apply(lambda x: len(x)).max(), -3)
+        max_sentence_length = round(
+            df.Preprocessed_typed_sentence.apply(lambda x: len(x)).max(), -3
+        )
     if which_information == "char":
         # Rounds (up) to nearest hundred
-        max_sentence_length = round(df.Preprocessed_typed_sentence.apply(lambda x: len(x)).max(), -2)
+        max_sentence_length = round(
+            df.Preprocessed_typed_sentence.apply(lambda x: len(x)).max(), -2
+        )
 
     # Make training data array
     all_sentences = [item for sublist in subject_documents for item in sublist]
@@ -222,7 +256,7 @@ def create_training_data_keras(DATA_ROOT,
     # Update alphabet
     tk.word_index = alphabet_indices
 
-    if feat_type == 'doc':
+    if feat_type == "doc":
         raise NotImplementedError
         # If we are using document features
         X = []
@@ -230,32 +264,50 @@ def create_training_data_keras(DATA_ROOT,
             # Create integer representations of subject's written sentences
             tmp_int_docs = tk.texts_to_sequences(doc)
             # Pad sequences so that they all have the same length and then one-hot encode
-            X.append(to_categorical(pad_sequences(tmp_int_docs, maxlen=max_sentence_length, padding='post')))
+            X.append(
+                to_categorical(
+                    pad_sequences(
+                        tmp_int_docs, maxlen=max_sentence_length, padding="post"
+                    )
+                )
+            )
 
-        if which_information == 'char_time_space':
+        if which_information == "char_time_space":
             raise NotImplementedError
 
     # Get integer sequences: converts sequences of chars to sequences of ints
     int_sequences = tk.texts_to_sequences(all_sentences)
 
     # Pad sequences so that they all have the same length and then one-hot encode
-    X = to_categorical(pad_sequences(int_sequences, maxlen=max_sentence_length, padding='post'))
+    X = to_categorical(
+        pad_sequences(int_sequences, maxlen=max_sentence_length, padding="post")
+    )
 
-    if which_information == 'char_time_space':
+    if which_information == "char_time_space":
         # Load relevant keyboard
         keyboard = us_standard_layout_keyboard()  # OBS: nested list
         # Check that all chars are in fact in our "keyboard" -- if not, we cannot map a coordinate
         assert alphabet.issubset(set(list(itertools.chain.from_iterable(keyboard))))
-        space = [english_keys_to_2d_coordinates(sentence, keyboard) for sentence in all_sentences]
-        space_padded = [pad(s, [(0, max_sentence_length - len(s)), (0, 0)], mode='constant') for s in space]
+        space = [
+            english_keys_to_2d_coordinates(sentence, keyboard)
+            for sentence in all_sentences
+        ]
+        space_padded = [
+            pad(s, [(0, max_sentence_length - len(s)), (0, 0)], mode="constant")
+            for s in space
+        ]
         # Append coordinates to one-hot encoded sentences
-        X = einsum('ijk->kij', dstack([hstack((x, s)) for (x, s) in zip(X, space_padded)]))
+        X = einsum(
+            "ijk->kij", dstack([hstack((x, s)) for (x, s) in zip(X, space_padded)])
+        )
 
     # Get labels (diagnoses)
     y = df.Diagnosis.tolist()
 
     # Chop up data into train and test sets
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, shuffle=True)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.1, shuffle=True
+    )
     return X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size
 
 
@@ -282,26 +334,52 @@ def us_standard_layout_keyboard():
     kb_row_1 = ["", "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]", ""]
     kb_row_2 = ["", "a", "s", "d", "f", "g", "h", "j", "k", "l", ";", "'", "", ""]
     kb_row_3 = ["\\", "z", "x", "c", "v", "b", "n", "m", ",", ".", "/", "", "", ""]
-    kb_row_4 = ["", "", "", " ", " ", " ", " ", " ", " ", "", "", "", "", ""]  # Space bar
+    kb_row_4 = [ "", "", "", " ", " ", " ", " ", " ", " ", "", "", "", "", "", ]  # Space bar
     # Upper caps
     kb_row_0_u = ["~", "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "_", "+", ""]
     kb_row_1_u = ["", "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "{", "}", "|"]
     kb_row_2_u = ["", "A", "S", "D", "F", "G", "H", "J", "K", "L", ":", "", "", ""]
     kb_row_3_u = ["", "Z", "X", "C", "V", "B", "N", "M", "<", ">", "?", "", "", ""]
-    keyboard = [kb_row_0, kb_row_1, kb_row_2, kb_row_3, kb_row_4,
-                kb_row_0_u, kb_row_1_u, kb_row_2_u, kb_row_3_u]
+    keyboard = [
+        kb_row_0,
+        kb_row_1,
+        kb_row_2,
+        kb_row_3,
+        kb_row_4,
+        kb_row_0_u,
+        kb_row_1_u,
+        kb_row_2_u,
+        kb_row_3_u,
+    ]
 
     return keyboard
 
 
 def english_keys_to_2d_coordinates(typed_sentence, keyboard):
+    """
+    Function returns the 2D coordinates of the characters in the sentence.
+
+    Parameters
+    ----------
+    typed_sentence : [type]
+        [description]
+    keyboard : [type]
+        [description]
+
+    Returns
+    -------
+    [type]
+        [description]
+    """
 
     # Store individual key coordinates here
     coordinates = []
     for c in typed_sentence:
         for i, r in enumerate(keyboard):
             try:
+                # Check if character is in given key-map
                 coordinates.append((i, r.index(c)))
             except:
+                # If not, store the UNK coordinate (center of keyboard)
                 pass
     return array(coordinates)
