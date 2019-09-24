@@ -57,11 +57,14 @@ def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
             "Process",
             "Unidentified",
         ],
-        "<UNK>",
+        "<unk>",
         inplace=True,
     )
     # Change backspace indicator to match MJFF data for simplicity
-    df.key.replace("Backspace", "backspace", inplace=True)
+    # df.key.replace("Backspace", "backspace", inplace=True)
+    # Make all keys lower-case
+    df.key = df.key.str.lower()
+
     return df
 
 
@@ -97,6 +100,7 @@ def get_typed_sentence_and_edit_distance(df, edit_distances_df=None):
 
 def remove_sentences_with_arrow_keys(df):
 
+    print("\nRemoval of sentences with left/right arrows keys...\n")
     print("Size of dataframe before row pruning: {}".format(df.shape))
     # Specify arrow movements
     arrow_corpus = ["ArrowRight", "ArrowLeft"]
@@ -137,6 +141,8 @@ def remove_sentences_with_arrow_keys(df):
 
 
 def remove_typed_sentences_with_high_edit_distance(df, edit_distances_df=None, threshold=75):
+
+    print("Removal of sentences with 'high' Levenshtein distance...\n")
 
     # If edit distances have not been passed
     if edit_distances_df is None:
@@ -232,7 +238,7 @@ def mjff_dataset_stats(df: pd.DataFrame):
     print("Maximum sentence length: %d" % sentence_lengths.max())
 
 
-def sentence_level_pause_correction(
+def sentence_level_pause_correction_mjff(
     df, char_count_response_threshold=40, cut_off_percentile=0.99, correction_model="gengamma"
 ) -> Tuple[dict, list]:
 
@@ -333,7 +339,7 @@ def create_char_compression_time_mjff_data(
     char_compression_sentences = defaultdict(dict)
 
     # Get the updated compression times
-    corrected_compression_times = sentence_level_pause_correction(
+    corrected_compression_times = sentence_level_pause_correction_mjff(
         df, char_count_response_threshold=char_count_response_threshold
     )
 

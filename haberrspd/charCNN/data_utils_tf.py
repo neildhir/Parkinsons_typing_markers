@@ -271,6 +271,10 @@ def us_standard_layout_keyboard():
     [type]
         [description]
     """
+
+    # TODO: This needs to be changed to reflect the same keyboard as the MRC one (See below)
+    raise ValueError
+
     # Lower caps
     kb_row_0 = ["`", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=", ""]
     kb_row_1 = ["", "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]", ""]
