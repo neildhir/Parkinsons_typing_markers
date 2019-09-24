@@ -3,7 +3,7 @@ import re
 import socket
 import warnings
 from collections import Counter, defaultdict
-from itertools import groupby
+from itertools import groupby, count
 from operator import itemgetter
 from pathlib import Path
 from typing import Tuple
@@ -453,6 +453,9 @@ def make_character_compression_time_sentence(
     assert len(compression_times) == len(characters), "Lengths are: {} and {}".format(
         len(compression_times), len(characters)
     )
+
+    if type(compression_times) is not pd.Series:
+        compression_times = pd.Series(compression_times)
 
     char_times = compression_times // time_redux_fact
     return flatten([[c] * int(n) for c, n in zip(characters[:-1], char_times[1:])])
