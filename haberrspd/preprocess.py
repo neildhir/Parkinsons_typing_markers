@@ -36,6 +36,8 @@ def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
 
     remove_typed_sentences_with_high_edit_distance(df)
     remove_sentences_with_arrow_keys(df)
+    # TODO: data-collection erroroneous sentences to be fixed
+    drop_sentences_with_faulty_data_collection(df)
     # Replace following keys with UNK
     df.key.replace(
         [
@@ -60,15 +62,41 @@ def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
         "<unk>",
         inplace=True,
     )
-    # Change backspace indicator to match MJFF data for simplicity
-    # df.key.replace("Backspace", "backspace", inplace=True)
     # Make all keys lower-case
     df.key = df.key.str.lower()
 
     return df
 
 
-def get_typed_sentence_and_edit_distance(df, edit_distances_df=None):
+def drop_sentences_with_faulty_data_collection(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    This function removes about 10% of the collected MRC data because certain sentences
+    lack matching up and down key-strokes. These are necessary to calculate the total
+    compression time of a key. Consequently, without them, no such calculation can be made.
+    Hence they are removed. Note that this is an in-place operation
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The raw MRC dataset
+    """
+
+    print("\nRemoval of sentences with faulty data collection...\n")
+    print("Size of dataframe before row pruning: {}".format(df.shape))
+
+    subjects = sorted(set(df.participant_id))
+    error_sentences_by_subject = defaultdict(list)
+    for subj_idx in subjects:
+        # Not all subjects have typed all sentences hence we have to do it this way
+        for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
+            if len(df.loc[(df.participant_id == subj_idx) & (df.sentence_id == sent_idx)]) % 2 != 0:
+                # Drop in-place
+                df.drop(df[(df.participant_id == subj_idx) & (df.sentence_id == sent_idx)].index, inplace=True)
+
+    print("Size of dataframe after row pruning: {}".format(df.shape))
+
+
+def get_typed_sentence_and_edit_distance(df: pd.DataFrame, edit_distances_df=None):
 
     # If edit distances have not been passed
     if edit_distances_df is None:
@@ -98,7 +126,7 @@ def get_typed_sentence_and_edit_distance(df, edit_distances_df=None):
     return out
 
 
-def remove_sentences_with_arrow_keys(df):
+def remove_sentences_with_arrow_keys(df: pd.DataFrame):
 
     print("\nRemoval of sentences with left/right arrows keys...\n")
     print("Size of dataframe before row pruning: {}".format(df.shape))
@@ -140,7 +168,7 @@ def remove_sentences_with_arrow_keys(df):
     df.key.replace("Spacebar", " ", inplace=True)
 
 
-def remove_typed_sentences_with_high_edit_distance(df, edit_distances_df=None, threshold=75):
+def remove_typed_sentences_with_high_edit_distance(df: pd.DataFrame, edit_distances_df=None, threshold=75):
 
     print("Removal of sentences with 'high' Levenshtein distance...\n")
 
@@ -167,7 +195,7 @@ def remove_typed_sentences_with_high_edit_distance(df, edit_distances_df=None, t
     print("Size of dataframe after row pruning: {}".format(df.shape))
 
 
-def calculate_edit_distance_between_response_and_target_MRC(df):
+def calculate_edit_distance_between_response_and_target_MRC(df: pd.DataFrame):
     subjects = sorted(set(df.participant_id))  # NOTE: set() is weakly random# Store edit distances here
     edit_distances_df = pd.DataFrame(index=subjects, columns=range(1, 16))  # 15 unique sentences
     # Loop over subjects
@@ -677,6 +705,20 @@ def combine_characters_to_form_words_at_space(typed_keys: dict, sent_ids: list, 
     return completed_sentence_per_subject_per_sentence
 
 
+def range_extend(x):
+    # Need to assert that this is given a sequentially ordered array
+    return list(np.array(x) - len(x)) + x
+
+
+def remove_leading_backspaces(x, removal_character):
+    # Recursive method to remove the leading backspaces
+    # Function recursively removes the leading backspace(s) if present
+    if x[0] == removal_character:
+        return remove_leading_backspaces(x[1:], removal_character)
+    else:
+        return x
+
+
 def backspace_corrector(
     sentence: list, removal_character="backspace", invokation_type=1, verbose: bool = False
 ) -> list:
@@ -697,21 +739,9 @@ def backspace_corrector(
         # In place of 'backspace' we use a pound-sign
         return ["£" if x == removal_character else x for x in sentence], None
 
-    # Need to assert that this is given a sequentially ordered array
-    def range_extend(x):
-        return list(np.array(x) - len(x)) + x
-
-    # Recursive method to remove the leading backspaces
-    def remove_leading_backspaces(x):
-        # Function recursively removes the leading backspace(s) if present
-        if x[0] == removal_character:
-            return remove_leading_backspaces(x[1:])
-        else:
-            return x
-
     # Apply to passed sentence
     pre_removal_length = len(sentence)
-    sentence = remove_leading_backspaces(sentence)
+    sentence = remove_leading_backspaces(sentence, removal_character)
     post_removal_length = len(sentence)
     nr_leading_chars_removed = pre_removal_length - post_removal_length
 
