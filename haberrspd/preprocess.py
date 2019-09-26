@@ -38,7 +38,7 @@ def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
     remove_sentences_with_arrow_keys(df)
     # TODO: data-collection erroroneous sentences to be fixed
     drop_sentences_with_faulty_data_collection(df)
-    # Replace following keys with UNK
+    # Replace following keys with an UNK symbol (in this case "£")
     df.key.replace(
         [
             "ArrowDown",
@@ -59,13 +59,50 @@ def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
             "Process",
             "Unidentified",
         ],
-        "<unk>",
+        "£",  # We use a pound-sign because Americans don't have this symbol on their keyboards.
         inplace=True,
     )
     # Make all keys lower-case
     df.key = df.key.str.lower()
 
-    return df
+    # Return only relevant columns
+    return df[["key", "type", "location", "timestamp", "participant_id", "sentence_id", "diagnosis"]].reset_index(
+        drop=True
+    )
+
+
+def test_repeating_pattern(lst, pattern=("keydown", "keyup")):
+    pat_len = len(pattern)
+    assert "keydown" == lst[0], "keydown does not start the list"
+    assert len(lst) % pat_len == 0, "mismatched length of list"
+    assert list(pattern) * (len(lst) // pat_len) == lst, "the list does not follow the correct pattern"
+
+
+def lookup(v, d={}, c=count()):
+    if v in d:
+        return d.pop(v)
+    else:
+        d[v] = next(c)
+        return d[v]
+
+
+def reorder_key_timestamp_columns_mrc(df: pd.DataFrame):
+
+    # Check that the column is of even length
+    assert len(df) % 2 == 0, "The length is {}.".format(len(df))
+
+    # Use lookup function to extract the next row-order
+    df["new_row_order"] = df.key.map(lookup)
+
+    return df.sort_values(by="new_row_order", kind="mergesort").drop("new_row_order", axis=1).reset_index(drop=True)
+
+
+def increasing(L):
+    return all(x <= y for x, y in zip(L, L[1:]))
+
+
+def calculate_total_key_compression_time(df):
+    return [(x - y) for x, y in zip(df.timestamp[1::2], df.timestamp[0::2])]
 
 
 def drop_sentences_with_faulty_data_collection(df: pd.DataFrame) -> pd.DataFrame:
@@ -85,7 +122,6 @@ def drop_sentences_with_faulty_data_collection(df: pd.DataFrame) -> pd.DataFrame
     print("Size of dataframe before row pruning: {}".format(df.shape))
 
     subjects = sorted(set(df.participant_id))
-    error_sentences_by_subject = defaultdict(list)
     for subj_idx in subjects:
         # Not all subjects have typed all sentences hence we have to do it this way
         for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
