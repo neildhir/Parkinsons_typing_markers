@@ -37,7 +37,9 @@ def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
     remove_typed_sentences_with_high_edit_distance(df)
     remove_sentences_with_arrow_keys(df)
     # TODO: data-collection erroroneous sentences to be fixed
+    # TODO: we can probablt return these now
     drop_sentences_with_faulty_data_collection(df)
+
     # Replace following keys with an UNK symbol (in this case "£")
     df.key.replace(
         [
@@ -62,8 +64,12 @@ def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
         "£",  # We use a pound-sign because Americans don't have this symbol on their keyboards.
         inplace=True,
     )
+
     # Make all keys lower-case
     df.key = df.key.str.lower()
+
+    # As well as all columns just to make life easier
+    df.columns = df.columns.str.lower()
 
     # Return only relevant columns
     return df[["key", "type", "location", "timestamp", "participant_id", "sentence_id", "diagnosis"]].reset_index(
@@ -187,12 +193,14 @@ def remove_sentences_with_arrow_keys(df: pd.DataFrame):
             arrowleft_matrix.loc[subj_idx, sent_idx] = dff.loc[
                 (dff.participant_id == subj_idx) & (dff.sentence_id == sent_idx) & (dff.key == "ArrowLeft"), "key"
             ].count()
+
     # Populate
     for subj_idx in right_index:
         for sent_idx in range(1, 16):
             arrowright_matrix.loc[subj_idx, sent_idx] = dff.loc[
                 (dff.participant_id == subj_idx) & (dff.sentence_id == sent_idx) & (dff.key == "ArrowRight"), "key"
             ].count()
+
     # Get coordinates of all rows and then drop
     for subj_idx, sent_idx in arrowleft_matrix[arrowleft_matrix != 0].stack().index:
         df.drop(df[(df["participant_id"] == subj_idx) & (df["sentence_id"] == sent_idx)].index, inplace=True)
@@ -221,12 +229,9 @@ def remove_typed_sentences_with_high_edit_distance(df: pd.DataFrame, edit_distan
     for subj_idx in subjects:
         # Not all subjects have typed all sentences hence we have to do it this way
         for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
-            if sent_idx < 16:
-                if edit_distances_df.loc[subj_idx, sent_idx] > threshold:
-                    # Remove sentence from dataframe
-                    df.drop(
-                        df[(df["participant_id"] == subj_idx) & (df["sentence_id"] == sent_idx)].index, inplace=True
-                    )
+            if edit_distances_df.loc[subj_idx, sent_idx] > threshold:
+                # Remove sentence from dataframe
+                df.drop(df[(df["participant_id"] == subj_idx) & (df["sentence_id"] == sent_idx)].index, inplace=True)
 
     print("Size of dataframe after row pruning: {}".format(df.shape))
 
@@ -238,14 +243,19 @@ def calculate_edit_distance_between_response_and_target_MRC(df: pd.DataFrame):
     for subj_idx in subjects:
         # Not all subjects have typed all sentences hence we have to do it this way
         for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
-            if sent_idx < 16:
-                # Locate df segment to extract
-                coordinates = (df.participant_id == subj_idx) & (df.sentence_id == sent_idx)
-                # Calculate the edit distance
-                edit_distances_df.loc[subj_idx, sent_idx] = edit_distance(
-                    df.loc[coordinates, "response_content"].unique().tolist()[0],
-                    df.loc[coordinates, "sentence_content"].unique().tolist()[0],
-                )
+            # Locate df segment to extract
+            coordinates = (df.participant_id == subj_idx) & (df.sentence_id == sent_idx)
+            # Calculate the edit distance
+            response = df.loc[coordinates, "response_content"].unique()[0]
+            target = df.loc[coordinates, "sentence_content"].unique()[0]
+            if type(response) is str and type(target) is str:
+                edit_distances_df.loc[subj_idx, sent_idx] = edit_distance(response, target)
+            else:
+                # To handle sentences where nothing was written
+                edit_distances_df.loc[subj_idx, sent_idx] = 9999
+
+    # Replace all NaNs with 9999 as well (NaNs are sentences which were not typed)
+    edit_distances_df.fillna(9999, inplace=True)
 
     return edit_distances_df
 
