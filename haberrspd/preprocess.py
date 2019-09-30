@@ -38,7 +38,7 @@ def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
     remove_sentences_with_arrow_keys(df)
     # TODO: data-collection erroroneous sentences to be fixed
     # TODO: we can probablt return these now
-    drop_sentences_with_faulty_data_collection(df)
+    # drop_sentences_with_faulty_data_collection(df)
 
     # Replace following keys with an UNK symbol (in this case "£")
     df.key.replace(
