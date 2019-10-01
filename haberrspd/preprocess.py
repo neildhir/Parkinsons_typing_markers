@@ -818,14 +818,14 @@ def backspace_corrector(
 
         for group in backspace_groups:
 
-            # Solitary backspace removel proceedure
+            # Solitary backspace removal proceedure
             if len(group) == 1:
                 remove_cords.extend([group[0]])  # Remove _just_ the backspace and nothing else, don't invoke
             else:
                 # XXX: this _may_ introduce negative indices at the start of a sentence
                 # these are filtered out further down
                 remove_cords.extend(range_extend(group[:-1]))  # This invokes the n-1 backspaces
-                # This remove the nth backspace and the immediately following character
+                # This removes the nth backspace and the immediately following character
                 remove_cords.extend([group[-1], group[-1] + 1])
 
     else:
