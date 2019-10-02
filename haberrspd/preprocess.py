@@ -765,6 +765,9 @@ def remove_leading_backspaces(x, removal_character):
         return x
 
 
+
+
+
 def backspace_corrector(
     sentence: list, removal_character="backspace", invokation_type=1, verbose: bool = False
 ) -> list:
