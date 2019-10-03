@@ -765,7 +765,46 @@ def remove_leading_backspaces(x, removal_character):
         return x
 
 
+def backspace_remover_mrc(df: pd.DataFrame, char="backspace", test=False):
 
+    ### FIX THIS FOR MRC DATA
+    ### MAKE SURE TO DELETE KEYUPS BEFORE DOING THIS
+
+    # 1) Delete all backspace+keyups to start with
+    idxs_up = df.index[(df.key == "backspace") & (df.type == "keyup")].tolist()
+    # In-place droppping of these rows
+    df.drop(df.index[idxs_up], inplace=True)
+    # Reset index so that we can sort it properly in the next step
+    df.reset_index(drop=True, inplace=True)
+
+    # 2) Find all remaining backspace+keydowns
+    idxs = df.index[(df.key == "backspace") & (df.type == "keydown")].tolist()
+    contiguous_groups = []
+    for k, g in groupby(enumerate(sorted(idxs)), lambda ix: ix[1] - ix[0]):
+        contiguous_groups.append(list(map(itemgetter(1), g)))
+
+    indices_to_remove = []
+    if len(idxs) != 0:
+        for g in contiguous_groups:
+
+            if len(g) == 1:
+                # We do it this way because: because we want to capture this error slips
+                # Replace backspace character with indicator character
+                df.loc[g[0], "key"] = "€"
+
+            else:
+                # We invoke all backspaces but except the first one.
+                indices_to_remove.extend(range_extend(g)[1:-1])
+
+        if test is False:
+            # In-place operation, no need to return anything. Cannot reset index at this point.
+            df.drop(df.index[indices_to_remove], inplace=True)
+            # Reset index so that we can sort it properly in the next step
+            df.reset_index(drop=True, inplace=True)
+            # Replace remaining backspace with indicator characters
+            test.loc[df.key == "backspace"] = "€"
+        else:
+            print("Indices to remove: {}".format(indices_to_remove))
 
 
 def backspace_corrector(
@@ -823,7 +862,9 @@ def backspace_corrector(
 
             # Solitary backspace removal proceedure
             if len(group) == 1:
-                remove_cords.extend([group[0]])  # Remove _just_ the backspace and nothing else, don't invoke
+                # We do it this way because: because we want to capture these error slips
+                remove_cords.extend([group[0]])
+                # Remove _just_ the backspace and nothing else, don't invoke
             else:
                 # XXX: this _may_ introduce negative indices at the start of a sentence
                 # these are filtered out further down
