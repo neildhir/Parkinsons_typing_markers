@@ -16,7 +16,7 @@ from sklearn.model_selection import train_test_split
 
 from .__init_paths import data_root
 
-# MRC
+# ------------------------------------------ MRC------------------------------------------ #
 
 
 def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
@@ -36,9 +36,6 @@ def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
 
     remove_typed_sentences_with_high_edit_distance(df)
     remove_sentences_with_arrow_keys(df)
-    # TODO: data-collection erroroneous sentences to be fixed
-    # TODO: we can probablt return these now
-    # drop_sentences_with_faulty_data_collection(df)
 
     # Replace following keys with an UNK symbol (in this case "£")
     df.key.replace(
@@ -68,6 +65,18 @@ def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
     # Make all keys lower-case
     df.key = df.key.str.lower()
 
+    # For keys of char length > 1, we replace them with a special symbols with len() == 1
+    replace_dict = {
+        "backspace": "α",
+        "shift": "β",
+        "control": "γ",
+        "capslock": "δ",
+        "meta": "ε",
+        "tab": "ζ",
+        "alt": "η",
+    }
+    df.replace({"key": replace_dict}, inplace=True)
+
     # As well as all columns just to make life easier
     df.columns = df.columns.str.lower()
 
@@ -77,38 +86,258 @@ def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def test_repeating_pattern(lst, pattern=("keydown", "keyup")):
+def create_char_compression_time_mrc_data(df: pd.DataFrame, time_redux_fact=10) -> Tuple[dict, list]:
+
+    fail = 0
+    success = 0
+    corrected_sentences = defaultdict(dict)
+    broken_sentences = defaultdict(dict)
+    char_compression_sentences = defaultdict(dict)
+    for subj_idx in df.participant_id.unique():
+        # Not all subjects have typed all sentences hence we have to do it this way
+        for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
+
+            # Locate df segment to extract
+            coordinates = (df.participant_id == subj_idx) & (df.sentence_id == sent_idx)
+
+            # Store temporary dataframe because why not
+            tmp_df = df.loc[coordinates, ("key", "timestamp", "type")].reset_index(drop=True)  # Reset index
+
+            # Action order:
+            #     0. Sort dataset
+            #     1. Implement backspaces
+            #     2. Remove contiguous shifts
+            #     3. Remove solitary keys
+
+            # Get correctly ordered sentences and total compression times
+            tmp_df = move_to_strict_striped_type_order(tmp_df)
+
+            # Method to 'implement' the users' backspace actions
+            backspace_implementer_mrc(tmp_df)
+
+            # Removes contiguous shift presses
+            combine_contiguous_shift_keydowns_without_matching_keyup(tmp_df)
+
+            # Remove solitary key-presses which do not have a matching keyup or keydown
+            remove_solitary_key_presses(tmp_df)
+
+            # Check what we managed to achieve
+            if assess_repeating_key_compression_pattern(tmp_df.type.tolist()):
+
+                # Condition succeeds: data-collection is fixed
+                corrected_sentences[subj_idx][sent_idx] = tmp_df
+                success += 1
+
+            else:
+
+                # Condition fails: data-collection is broken
+                broken_sentences[subj_idx][sent_idx] = tmp_df
+                fail += 1
+                print("[broken sentence] Participant: {}, Sentence: {}".format(subj_idx, sent_idx))
+
+    for subj_idx in corrected_sentences.keys():
+        # Not all subjects have typed all sentences hence we have to do it this way
+        for sent_idx in corrected_sentences[subj_idx].keys():
+            # Final long-format sentences stored here
+            char_compression_sentences[subj_idx][sent_idx] = "".join(
+                make_character_compression_time_sentence_mrc(
+                    corrected_sentences[subj_idx][sent_idx], time_redux_fact=time_redux_fact
+                )
+            )
+
+    print("Percentage failed: {}".format(round(100 * (fail / (success + fail)), 2)))
+    print(fail, success)
+
+
+def remove_solitary_key_presses(df):
+
+    suspect_keys = []
+    for key, value in Counter(df.key.tolist()).items():
+        if value % 2 != 0:
+            # Find all keys which appear an unequal number of times
+            suspect_keys.append(key)
+
+    # Do not remove "correction identifier key" i.e. €
+    suspect_keys = [key for key in suspect_keys if key not in {"€"}]
+
+    # Find all instances of suspect keys in df
+    if len(suspect_keys) != 0:
+        indices_to_keep = []
+        all_idxs = []
+        for key in suspect_keys:
+            idxs = df.loc[df.key == key].index
+            all_idxs.extend(idxs)
+            # If there is more than one such key
+            for pair in list(zip(idxs, idxs[1:]))[::2]:
+                if pair[1] - pair[0] == 1:
+                    indices_to_keep.extend(pair)
+
+        # Take set difference to find what's left
+        indices_to_remove = list(set(all_idxs) - set(indices_to_keep))
+
+        # In-place operation, no need to return anything. Cannot reset index at this point.
+        df.drop(df.index[indices_to_remove], inplace=True)
+        # Reset index so that we can sort it properly in the next step
+        df.reset_index(drop=True, inplace=True)
+
+
+def move_to_strict_striped_type_order(df):
+
+    df_2 = pd.DataFrame(columns=["key", "timestamp", "type"])
+    indexes = []
+    for i in range(len(df)):
+        if i not in indexes:
+            df_2 = df_2.append(df.loc[i, :])
+            letter = df.loc[i, "key"]
+            indexes.append(i)
+
+            for j in range(i + 1, len(df)):
+                if (df.loc[j, "key"] == df.loc[i, "key"]) and (j not in indexes):
+
+                    df_2 = df_2.append(df.loc[j, :])
+                    indexes.append(j)
+                    break
+
+    return df_2.reset_index(drop=True)
+
+
+def assess_repeating_key_compression_pattern(lst, pattern=("keydown", "keyup")):
+
+    assert set(pattern).issubset(set(lst))
     pat_len = len(pattern)
-    assert "keydown" == lst[0], "keydown does not start the list"
-    assert len(lst) % pat_len == 0, "mismatched length of list"
-    assert list(pattern) * (len(lst) // pat_len) == lst, "the list does not follow the correct pattern"
-
-
-def lookup(v, d={}, c=count()):
-    if v in d:
-        return d.pop(v)
+    if ("keydown" == lst[0]) and (len(lst) % pat_len == 0) and (list(pattern) * (len(lst) // pat_len) == lst):
+        return True
     else:
-        d[v] = next(c)
-        return d[v]
+        return False
 
 
-def reorder_key_timestamp_columns_mrc(df: pd.DataFrame):
+def combine_contiguous_shift_keydowns_without_matching_keyup(df, shift_char="β"):
+    """
+    Function assumes that df has been sorted before getting this far.
+    """
 
-    # Check that the column is of even length
-    assert len(df) % 2 == 0, "The length is {}.".format(len(df))
+    # Get the index of all shift keydowns (these are the ones causing the registration problems)
+    idxs_down = df.index[(df["key"] == shift_char) & (df["type"] == "keydown")].tolist()
 
-    # Use lookup function to extract the next row-order
-    df["new_row_order"] = df.key.map(lookup)
+    # Locate all contiguous sub-sequences
+    keydown_groups = []
+    for k, g in groupby(enumerate(idxs_down), lambda ix: ix[0] - ix[1]):
+        keydown_groups.append(list(map(itemgetter(1), g)))
 
-    return df.sort_values(by="new_row_order", kind="mergesort").drop("new_row_order", axis=1).reset_index(drop=True)
+    # Check what is inside shift groups (if they only contain 'keydown' or 'keyup' there is a problem)
+    removal_keydown_coordinates = []
+    for g in keydown_groups:
+        # Contiguous groups of shifts
+        if len(g) > 1:
+            ii = None
+            for j in range(1, 6):
+                if (df.loc[g[-1] + j, "type"] == shift_char) and (df.loc[g[-1] + j, "key"] == shift_char):
+                    ii = j
+            if ii:
+                # Do this if the immediate key after each group is a "keyup"
+                removal_keydown_coordinates.extend(g[1:])
+            else:
+                # Do this if there is no immediately preceeding "keyup"
+                removal_keydown_coordinates.extend(g)
+
+    # In-place operation, no need to return anything. Cannot reset index at this point.
+    df.drop(df.index[removal_keydown_coordinates], inplace=True)
+    # Reset index so that we can sort it properly in the next step
+    df.reset_index(drop=True, inplace=True)
 
 
-def increasing(L):
-    return all(x <= y for x, y in zip(L, L[1:]))
+def range_extend_mrc(x):
+    # Need to assert that this is given a sequentially ordered array
+    out = list(range(x[0] - 2 * len(x), x[0] - len(x))) + list(range(x[0] - len(x), x[0])) + x
+    assert np.diff(out).sum() == len(out) - 1
+    return out
 
 
-def calculate_total_key_compression_time(df):
-    return [(x - y) for x, y in zip(df.timestamp[1::2], df.timestamp[0::2])]
+def make_character_compression_time_sentence_mrc(df: pd.DataFrame, time_redux_fact=10) -> str:
+    long_form_sentence = []
+    for i in list(df.index)[::2]:
+        # Total key compression time
+        comp_time = abs(df.timestamp[i + 1] - df.timestamp[i])
+        # Character compressed
+        long_form_sentence.append([df.key[i]] * int(comp_time // time_redux_fact))
+
+    return flatten(long_form_sentence)
+
+
+def backspace_implementer_mrc(df: pd.DataFrame, backspace_char="α"):
+
+    # 0) Remove any singular backspaces that appear bc. data-reading problems
+    idxs = df.index[(df.key == backspace_char)].tolist()
+    groups = []
+    remove = []
+    for k, g in groupby(enumerate(sorted(idxs)), lambda ix: ix[1] - ix[0]):
+        groups.append(list(map(itemgetter(1), g)))
+    # Only remove ones which are actually only of list length 1
+    for g in groups:
+        # Data-reading error
+        if len(g) == 1:
+            remove.extend(g)
+        # We replace these inline so we don't have to do it later
+        elif len(g) == 2:
+            # Place indicators [keydown]
+            df.loc[g[0], "key"] = "€"
+            # Place indicators [keyup]
+            df.loc[g[1], "key"] = "€"
+
+    if remove:
+        # In-place droppping of rows with only one backspace
+        df.drop(df.index[remove], inplace=True)
+        # Reset index so that we can sort it properly in the next step
+        df.reset_index(drop=True, inplace=True)
+
+    # 1) Delete all backspace+keyups to start with
+    idxs_up = df.index[(df.key == backspace_char) & (df.type == "keyup")].tolist()
+    # Copy these rows for later use
+    df_keyup = copy.copy(df.iloc[idxs_up])
+    # In-place dropping of these rows
+    df.drop(df.index[idxs_up], inplace=True)
+    # Reset index so that we can sort it properly in the next step
+    df.reset_index(drop=True, inplace=True)
+
+    # 2) Find all remaining backspace+keydowns
+    idxs = df.index[(df.key == backspace_char) & (df.type == "keydown")].tolist()
+    contiguous_groups = []
+    for k, g in groupby(enumerate(sorted(idxs)), lambda ix: ix[1] - ix[0]):
+        contiguous_groups.append(list(map(itemgetter(1), g)))
+
+    indices_to_remove = []
+    if idxs:
+        for g in contiguous_groups:
+
+            gg = range_extend_mrc(g)
+            # If any negative indices, correct and move indicator characters
+            if any(i < 0 for i in gg):
+                gg = list(filter(lambda x: x >= 0, gg))
+                indices_to_remove.extend(gg[1:-1])
+                # Place indicators [keydown]
+                df.loc[gg[0], "key"] = "€"
+            else:
+                indices_to_remove.extend(gg[3:-1])
+                # Place indicators [keydown]
+                df.loc[gg[2], "key"] = "€"
+
+            # Place indicators [keyup]
+            # Given a value of keydown timestamp (z), select a row in the keyup df
+            # where timestamp is closest to z.
+            keyup_timestamp = df_keyup.loc[(df_keyup["timestamp"] >= df.loc[gg[-1], "timestamp"])].timestamp.values[0]
+            df.loc[gg[-1], ("key", "timestamp", "type")] = ["€", keyup_timestamp, "keyup"]
+
+        # In-place operation, no need to return anything. Cannot reset index at this point.
+        df.drop(df.index[indices_to_remove], inplace=True)
+
+        # Reset index so that we can sort it properly in the next step
+        df.reset_index(drop=True, inplace=True)
+
+        # Check that the indicators appear in the right places
+        indicator_indices = df.index[(df.key == "€")].tolist()
+        for pair in list(zip(indicator_indices, indicator_indices[1:]))[::2]:
+            assert pair[1] - pair[0] == 1, indicator_indices
+        assert backspace_char not in df.key.tolist()
 
 
 def drop_sentences_with_faulty_data_collection(df: pd.DataFrame) -> pd.DataFrame:
@@ -260,7 +489,7 @@ def calculate_edit_distance_between_response_and_target_MRC(df: pd.DataFrame):
     return edit_distances_df
 
 
-# MJFF
+# ------------------------------------------- MJFF ------------------------------------------- #
 
 
 class preprocessMJFF:
