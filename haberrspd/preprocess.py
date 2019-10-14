@@ -19,6 +19,38 @@ from .__init_paths import data_root
 # ------------------------------------------ MRC------------------------------------------ #
 
 
+class preprocessMRC:
+    """
+    Governing class with which the user will interface.
+    All the heavy lifting happens under the hood.
+    """
+
+    def __init__(self):
+        print("\tMedical Research Council funded PD copy-typing data.\n")
+
+    def __call__(self, long_format=True) -> pd.DataFrame:
+
+        # Location on Neil's big machine in Sweden
+        data_root = Path("../data/MRC/")
+
+        # Read data
+        raw = pd.read_csv(data_root / "CombinedTypingDataSept27.csv", header=0)
+
+        # Clean
+        df = clean_MRC(raw)
+
+        # Preprocess: create sentences to be used in NLP model
+        sentences, _ = create_sentences_from_raw_typing_mrc(df)
+
+        # Convert into NLP-readable format
+        df = create_dataframe_from_processed_data(sentences, raw)
+
+        # Print summary stats of what we have loaded.
+        dataset_summary_statistics(df)
+
+        return df
+
+
 def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
     """
     Function provides the heavy lifting in cleaning the MRC dataset.
@@ -66,7 +98,7 @@ def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
     df.key = df.key.str.lower()
 
     # For keys of char length > 1, we replace them with a special symbols with len() == 1
-    replace_dict = {
+    char_replace_dict = {
         "backspace": "α",
         "shift": "β",
         "control": "γ",
@@ -75,7 +107,7 @@ def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
         "tab": "ζ",
         "alt": "η",
     }
-    df.replace({"key": replace_dict}, inplace=True)
+    df.replace({"key": char_replace_dict}, inplace=True)
 
     # As well as all columns just to make life easier
     df.columns = df.columns.str.lower()
@@ -86,7 +118,9 @@ def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def create_char_compression_time_mrc_data(df: pd.DataFrame, time_redux_fact=10) -> Tuple[dict, list]:
+def create_sentences_from_raw_typing_mrc(
+    df: pd.DataFrame, make_long_format=True, time_redux_fact=10
+) -> Tuple[dict, list]:
 
     fail = 0
     success = 0
@@ -138,15 +172,24 @@ def create_char_compression_time_mrc_data(df: pd.DataFrame, time_redux_fact=10) 
     for subj_idx in corrected_sentences.keys():
         # Not all subjects have typed all sentences hence we have to do it this way
         for sent_idx in corrected_sentences[subj_idx].keys():
-            # Final long-format sentences stored here
-            char_compression_sentences[subj_idx][sent_idx] = "".join(
-                make_character_compression_time_sentence_mrc(
-                    corrected_sentences[subj_idx][sent_idx], time_redux_fact=time_redux_fact
+            if make_long_format:
+                # Final long-format sentences stored here
+                char_compression_sentences[subj_idx][sent_idx] = "".join(
+                    make_character_compression_time_sentence_mrc(
+                        corrected_sentences[subj_idx][sent_idx], time_redux_fact=time_redux_fact
+                    )
                 )
-            )
+            else:
+                # We do not use the time-dimension and look only at the spatial component
+                # Final long-format sentences stored here
+                char_compression_sentences[subj_idx][sent_idx] = "".join(
+                    corrected_sentences[subj_idx][sent_idx].key[::2]
+                )  # [::2] takes into account that we only want one of the keydown-keyup pair.
 
     print("Percentage failed: {}".format(round(100 * (fail / (success + fail)), 2)))
     print(fail, success)
+
+    return char_compression_sentences
 
 
 def remove_solitary_key_presses(df):
@@ -514,16 +557,16 @@ class preprocessMJFF:
             assert all(df_english.columns == df_spanish.columns)
             df = pd.concat([df_english, df_spanish], ignore_index=True)
             # Print summary stats of what we have loaded.
-            mjff_dataset_stats(df)
+            dataset_summary_statistics(df)
             return df
         else:
             df, _ = create_MJFF_dataset(get_language, include_time)
             # Print summary stats of what we have loaded.
-            mjff_dataset_stats(df)
+            dataset_summary_statistics(df)
             return df
 
 
-def mjff_dataset_stats(df: pd.DataFrame):
+def dataset_summary_statistics(df: pd.DataFrame):
     """
     Some summary statistics of the preprocessed dataset.
 
@@ -532,7 +575,7 @@ def mjff_dataset_stats(df: pd.DataFrame):
     df : pd.DataFrame
         Preprocessed pandas dataframe.
     """
-    sentence_lengths = np.stack([np.char.str_len(i) for i in np.unique(df.Preprocessed_typed_sentence)])
+    sentence_lengths = np.stack([np.char.str_len(i) for i in df.Preprocessed_typed_sentence.unique()])
     print("Total number of study subjects: %d" % (len(set(df.Patient_ID))))
     print("Number of sentences typed by PD patients: %d" % (len(df.loc[df.Diagnosis == 1])))
     print("Number of sentences typed by controls: %d" % (len(df.loc[df.Diagnosis == 0])))
@@ -1101,6 +1144,8 @@ def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame) -
     Pandas DataFrame
         Returns the compiled dataframe from all subjects.
     """
+
+    assert "diagnosis" in df_meta.columns
 
     final_out = []
     for participant_id in my_dict.keys():
