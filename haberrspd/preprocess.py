@@ -19,10 +19,13 @@ from .__init_paths import data_root
 # ------------------------------------------ MRC------------------------------------------ #
 
 
-class preprocessMRC:
+class processMRC:
     """
     Governing class with which the user will interface.
     All the heavy lifting happens under the hood.
+
+    1. Cleaning takes place
+    2. Preprocessing takes place
     """
 
     def __init__(self):
@@ -37,7 +40,7 @@ class preprocessMRC:
         raw = pd.read_csv(data_root / "CombinedTypingDataSept27.csv", header=0)
 
         # Clean
-        df = clean_MRC(raw)
+        df = clean_mrc(raw)
 
         # Preprocess: create sentences to be used in NLP model
         sentences, _ = create_sentences_from_raw_typing_mrc(df)
@@ -51,7 +54,7 @@ class preprocessMRC:
         return df
 
 
-def clean_MRC(df: pd.DataFrame) -> pd.DataFrame:
+def clean_mrc(df: pd.DataFrame) -> pd.DataFrame:
     """
     Function provides the heavy lifting in cleaning the MRC dataset.
 
