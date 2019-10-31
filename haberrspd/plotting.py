@@ -2,24 +2,42 @@ import datetime
 from operator import itemgetter
 from pathlib import Path
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objs as go
+import seaborn as sns
+
 # from flair.data import Sentence
 # from flair.models import TextClassifier
-from pandas import read_csv, DataFrame
+from pandas import DataFrame, read_csv
 from plotly.offline import download_plotlyjs, init_notebook_mode, iplot, plot
 from sklearn.manifold import TSNE
 from sklearn.metrics import auc, roc_curve
 from sklearn.preprocessing import label_binarize
 
+nice_fonts = {
+    # Use LaTeX to write all text
+    "text.usetex": True,
+    "font.family": "serif",
+    # Use 10pt font in plots, to match 10pt font in document
+    "axes.labelsize": 10,
+    "font.size": 10,
+    # Make the legend/label fonts a little smaller
+    "legend.fontsize": 8,
+    "xtick.labelsize": 8,
+    "ytick.labelsize": 8,
+}
+# Universal update for fonts: https://jwalton.info/Embed-Publication-Matplotlib-Latex/
+mpl.rcParams.update(nice_fonts)
+
 
 def get_flair_labels_and_label_probabilities():
     DATA_ROOT_FASTTEXT = Path("../data/MJFF/fasttext/")  # Note the relative path
     # Get test data
-    text = read_csv(DATA_ROOT_FASTTEXT / "test.csv", sep='\t', header=None)
+    text = read_csv(DATA_ROOT_FASTTEXT / "test.csv", sep="\t", header=None)
     # Load trained model
-    classifier = TextClassifier.load_from_file(DATA_ROOT_FASTTEXT / 'best-model.pt')
+    classifier = TextClassifier.load_from_file(DATA_ROOT_FASTTEXT / "best-model.pt")
     predicted_labels = []  # Predicted PD/HC under model
     predicted_labels_probs = []  # Predicted PD/HC probability under model
     for sent in text[1]:
@@ -34,10 +52,7 @@ def get_flair_labels_and_label_probabilities():
     return predicted_labels, predicted_labels_probs
 
 
-def plot_roc_curve_simple(y_true,
-                          y_scores,
-                          filename=None,
-                          save_me=False):
+def plot_roc_curve_simple(y_true, y_scores, filename=None):
     """
     Plot receiver-operating curve.
 
@@ -53,33 +68,34 @@ def plot_roc_curve_simple(y_true,
         Descriptive filename
     """
 
+    # Set styles for paper
+    sns.set_context("paper")
+    sns.set_style("ticks")
+
     # Main calculations here
     fpr, tpr, _ = roc_curve(y_true, y_scores, pos_label=1)
     # Calculate area under the ROC curve here
     auc = np.trapz(tpr, fpr)
 
-    fig, ax = plt.subplots(1, 1, figsize=(7, 7))
+    fig, ax = plt.subplots(1, 1, figsize=(3, 3))
     lw = 2
-    ax.plot(fpr, tpr, color='darkorange',
-            lw=lw, label='ROC curve (area = %0.2f)' % auc)
-    ax.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+    ax.plot(fpr, tpr, color="red", lw=lw, label="ROC curve (area = %0.2f)" % auc)
+    ax.plot([0, 1], [0, 1], color="blue", lw=lw, linestyle="--")
     ax.set_xlim([0.0, 1.0])
     ax.set_ylim([0.0, 1.05])
-    ax.set_xlabel('False Positive Rate')
-    ax.set_ylabel('True Positive Rate')
-    ax.set_title('Receiver Operating Curve')
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    # ax.set_title("Receiver Operating Curve")
     ax.legend(loc="lower right")
 
-    if save_me:
-        assert filename is not None
+    if filename:
         # Set reference time for save
         now = datetime.datetime.now()
-        fig.savefig('../illustrations/roc_curve-'
-                    + filename + '-'
-                    + now.strftime("%Y-%m-%d-%H:%M")
-                    + '.pdf', bbox_inches='tight')
-
-    plt.show()
+        fig.savefig(
+            "../figures/roc_curve-" + filename + "-" + now.strftime("%Y-%m-%d-%H:%M") + ".pdf", bbox_inches="tight"
+        )
+    else:
+        plt.show()
 
 
 def plot_roc_curve(labels, label_probs, save_me=False):
@@ -120,29 +136,26 @@ def plot_roc_curve(labels, label_probs, save_me=False):
 
     fig, ax = plt.subplots(1, 1, figsize=(7, 7))
     lw = 2
-    ax.plot(fpr[1], tpr[1], color='darkorange',
-            lw=lw, label='ROC curve (area = %0.2f)' % roc_auc[1])
-    ax.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+    ax.plot(fpr[1], tpr[1], color="darkorange", lw=lw, label="ROC curve (area = %0.2f)" % roc_auc[1])
+    ax.plot([0, 1], [0, 1], color="navy", lw=lw, linestyle="--")
     ax.set_xlim([0.0, 1.0])
     ax.set_ylim([0.0, 1.05])
-    ax.set_xlabel('False Positive Rate')
-    ax.set_ylabel('True Positive Rate')
-    ax.set_title('Receiver Operating Curve')
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    ax.set_title("Receiver Operating Curve")
     ax.legend(loc="lower right")
 
     if save_me:
         # Set reference time for save
         now = datetime.datetime.now()
-        fig.savefig('../illustrations/roc_curve-' + now.strftime("%Y-%m-%d-%H:%M") + '.pdf', bbox_inches='tight')
+        fig.savefig("../illustrations/roc_curve-" + now.strftime("%Y-%m-%d-%H:%M") + ".pdf", bbox_inches="tight")
 
     plt.show()
 
 
-def sentence_embeddings_scatter_3d_plot(df: DataFrame,
-                                        X: list,
-                                        which_sentence: int = None,
-                                        save_me: bool = False,
-                                        filename: str = None) -> None:
+def sentence_embeddings_scatter_3d_plot(
+    df: DataFrame, X: list, which_sentence: int = None, save_me: bool = False, filename: str = None
+) -> None:
     """
     This is the main plotting function, for looking at embeddings. There are two ways
     in which this can be done; one) by looking at individual sentence embeddings in which
@@ -184,17 +197,19 @@ def sentence_embeddings_scatter_3d_plot(df: DataFrame,
                 x=[i[0] for i in y],
                 y=[i[1] for i in y],
                 z=[i[2] for i in y],
-                name='Diagnosis',
-                mode='markers',
-                text=["SENTENCE: {}<br><br>DIAGNOSIS: {}".format(i, j) for i, j in zip(
-                    sentence_df.Preprocessed_typed_sentence, targets)],
+                name="Diagnosis",
+                mode="markers",
+                text=[
+                    "SENTENCE: {}<br><br>DIAGNOSIS: {}".format(i, j)
+                    for i, j in zip(sentence_df.Preprocessed_typed_sentence, targets)
+                ],
                 marker=dict(
                     size=10,
                     color=[i for i in targets],  # Set color equal to Diagnosis
                     opacity=0.2,
-                    colorscale='RdBu',
-                    showscale=False
-                )
+                    colorscale="RdBu",
+                    showscale=False,
+                ),
             )
         ]
 
@@ -207,16 +222,16 @@ def sentence_embeddings_scatter_3d_plot(df: DataFrame,
                 x=[i[0] for i in y],
                 y=[i[1] for i in y],
                 z=[i[2] for i in y],
-                name='Diagnosis',
-                mode='markers',
-                text=[i for i in df['Preprocessed_typed_sentence']],
+                name="Diagnosis",
+                mode="markers",
+                text=[i for i in df["Preprocessed_typed_sentence"]],
                 marker=dict(
                     size=10,
-                    color=[i for i in df['Sentence_ID']],  # Set color equal to sentence ID
+                    color=[i for i in df["Sentence_ID"]],  # Set color equal to sentence ID
                     opacity=0.4,
-                    colorscale='Viridis',
-                    showscale=False
-                )
+                    colorscale="Viridis",
+                    showscale=False,
+                ),
             )
         ]
 
@@ -229,12 +244,7 @@ def sentence_embeddings_scatter_3d_plot(df: DataFrame,
         autosize=False,
         width=800,
         height=800,
-        margin=dict(
-            l=0,
-            r=0,
-            b=0,
-            t=0
-        )
+        margin=dict(l=0, r=0, b=0, t=0),
     )
     fig = go.Figure(data=data, layout=layout)
 
@@ -242,10 +252,10 @@ def sentence_embeddings_scatter_3d_plot(df: DataFrame,
         assert filename is not None, "You have to specify a distinctive filename."
         # Set reference time for save
         now = datetime.datetime.now()
-        plot(fig, filename='../illustrations/sentence-embedding-3D-' +
-             filename +
-             now.strftime("-%Y-%m-%d-%H:%M") +
-             '.html')
+        plot(
+            fig,
+            filename="../illustrations/sentence-embedding-3D-" + filename + now.strftime("-%Y-%m-%d-%H:%M") + ".html",
+        )
 
     # Actual plotting happens here
     iplot(fig)
