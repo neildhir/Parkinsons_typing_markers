@@ -569,6 +569,35 @@ class preprocessMJFF:
             return df
 
 
+def select_attempt(df, df_meta, attempt):
+    """
+    Function that filters the main data based on the subjects' attempt at the task.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Contains the main data
+    df_meta : pd.DataFrame
+        Contains the meta information such as diagnosis
+    attempt : int
+        Selects either attemp 1 or attempt 2.
+
+    Returns
+    -------
+    pd.DataFrame
+        Filtered dataframe
+    """
+
+    # Add blank column
+    df["attempt"] = ""
+    assert set(df_meta.participant_id.unique()) == set(df.participant_id.unique())
+    for idx in df.participant_id.unique():
+        df.loc[(df.participant_id == idx), "attempt"] = int(df_meta.loc[(df_meta.participant_id == idx), "attempt"])
+
+    # Select only rows with a specific attempt
+    return df.loc[(df.attempt == attempt)]
+
+
 def dataset_summary_statistics(df: pd.DataFrame):
     """
     Some summary statistics of the preprocessed dataset.
@@ -1044,7 +1073,7 @@ def backspace_corrector(
     sentence: list, removal_character="backspace", invokation_type=1, verbose: bool = False
 ) -> list:
 
-    # TODO: remember that this proceedure has changed, needs to mimic the behaviour of the MRC functionality
+    # TODO: remember that this proceedure has changed, needs to mimic the behaviour of the MRC functionality: i.e. the error is kept in the sentence.
 
     # Want to pass things as list because it easier to work with w.r.t. to strings
     assert isinstance(sentence, list)
@@ -1157,7 +1186,7 @@ def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame) -
                 [
                     [
                         participant_id,
-                        df_meta.loc[participant_id, "diagnosis"],
+                        int(df_meta.loc[df_meta.participant_id == participant_id, "diagnosis"]),
                         str(sent_id),
                         my_dict[participant_id][sent_id],
                     ]
@@ -1183,7 +1212,7 @@ def remap_English_MJFF_participant_ids(df):
     return df.replace({"Patient_ID": replacement_ids})
 
 
-def create_MJFF_dataset(language="english", include_time=True) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def create_MJFF_dataset(language="english", include_time=True, attempt=1) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     End-to-end creation of raw data to NLP readable train and test sets.
 
@@ -1191,6 +1220,8 @@ def create_MJFF_dataset(language="english", include_time=True) -> Tuple[pd.DataF
     ----------
     langauge : str
         Select which language should be preprocessed.
+    attempt: int
+        Select which attempt we are intersted in.
 
     Returns
     -------
@@ -1200,28 +1231,37 @@ def create_MJFF_dataset(language="english", include_time=True) -> Tuple[pd.DataF
 
     # Load raw text and meta data
     if language == "english":
-        df = pd.read_csv(data_root / "EnglishData-duplicateeventsremoved.csv")
         df_meta = pd.read_csv(
-            data_root / "EnglishParticipantKey.csv",
-            index_col=0,
+            data_root / "MJFF" / "raw" / "EnglishParticipantKey.csv",
             header=0,
             names=["participant_id", "ID", "attempt", "diagnosis"],
-            usecols=["participant_id", "diagnosis"],
         )
+        df = pd.read_csv(data_root / "MJFF" / "raw" / "EnglishData-duplicateeventsremoved.csv")
+
+        # Select which attempt we are interested in.
+        df = select_attempt(df, df_meta, attempt=attempt)
 
     elif language == "spanish":
-        df = pd.read_csv(data_root / "SpanishData-duplicateeventsremoved.csv")
+        df = pd.read_csv(data_root / "MJFF" / "raw" / "SpanishData-duplicateeventsremoved.csv")
         df_meta = pd.read_csv(
-            data_root / "SpanishParticipantKey.csv", index_col=0, header=0, names=["participant_id", "diagnosis"]
+            data_root / "MJFF" / "raw" / "SpanishParticipantKey.csv",
+            header=0,
+            names=["participant_id", "ID", "attempt", "diagnosis"],
         )
         df_meta.index = df_meta.index.astype(str)
+
         # Post-processing of the data could have lead to corrupted entries
         uncorrupted_participants = [i for i in set(df.participant_id) if i.isdigit()]
+
         # There is no label for subject 167, so we remove her here.
         uncorrupted_participants.remove("167")
         df = df[df["participant_id"].isin(uncorrupted_participants)]
+
         # 'correct' Spanish characters
         df = create_proper_spanish_letters(df)
+
+        # Select which attempt we are interested in.
+        df = select_attempt(df, df_meta, attempt)
 
     else:
         raise ValueError

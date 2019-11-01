@@ -56,8 +56,6 @@ def plot_roc_curve_simple(y_true, y_scores, filename=None):
     """
     Plot receiver-operating curve.
 
-    TODO: this plot cannot use the same aspect ratio as all the other plots. Fix this!
-
     Parameters
     ----------
     y_true : array-like
@@ -148,7 +146,7 @@ def plot_roc_curve(labels, label_probs, save_me=False):
     if save_me:
         # Set reference time for save
         now = datetime.datetime.now()
-        fig.savefig("../illustrations/roc_curve-" + now.strftime("%Y-%m-%d-%H:%M") + ".pdf", bbox_inches="tight")
+        fig.savefig("../figures/roc_curve-" + now.strftime("%Y-%m-%d-%H:%M") + ".pdf", bbox_inches="tight")
 
     plt.show()
 
