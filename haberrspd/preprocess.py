@@ -3,16 +3,19 @@ import re
 import socket
 import warnings
 from collections import Counter, defaultdict
-from itertools import groupby, count
+from itertools import count, groupby
 from operator import itemgetter
 from pathlib import Path
 from typing import Tuple
 
 import numpy as np
 import pandas as pd
+from nltk import edit_distance as ed
 from nltk.metrics import edit_distance  # Levenshtein
 from scipy.stats import gamma, gengamma, lognorm
 from sklearn.model_selection import train_test_split
+from sklearn.svm import SVC  # Support vector classifier
+from sklearn.metrics import roc_curve, auc
 
 from .__init_paths import data_root
 
@@ -1424,4 +1427,107 @@ def create_proper_spanish_letters(df: pd.DataFrame) -> pd.DataFrame:
                         # Drop the singular characters in place
                         df.drop(typed_chars_index[coordinates_to_remove], inplace=True)
 
+    return df
+
+
+# Basline calculation stuff
+
+
+def create_mjff_baselines(df, df_meta, attempt=1):
+
+    # Select which attempt we are considering
+    df = select_attempt(df, df_meta, attempt)
+
+    # First calculate the IKI for each sentence
+    df_iki = get_iki_baseline_df(df, df_meta)
+
+    # Second calculate the edit-distance
+    df, reference_sentences = create_MJFF_dataset("english", False, attempt)
+    df_edit = get_edit_distance_df(df, reference_sentences)
+
+    # Combine all measures
+    df = combine_iki_and_edit_distance(df_edit, df_iki)
+    assert not df.isnull().values.any()
+
+    return df
+
+
+def get_iki_baseline_df(df, df_meta):
+    # Drop too short sentences
+    char_count_response_threshold = 40
+    df = df[df.groupby(["participant_id", "sentence_id"]).key.transform("count") > char_count_response_threshold]
+
+    # Corrected compression times (i.e. timestamp difference / delta)
+
+    # TODO: this needs to be updated to match the MRC format
+    corrected_compression_times = sentence_level_pause_correction_mjff(df)
+
+    data = []
+    for sent_idx in corrected_compression_times.keys():
+        for participant in corrected_compression_times[sent_idx]:
+            tmp = corrected_compression_times[sent_idx][participant][1:]
+            # Append to list which we'll pass to a dataframe in subsequent cells
+            data.append(
+                (
+                    participant,
+                    sent_idx,
+                    int(df_meta.loc[(df_meta.participant_id == participant), "diagnosis"]),
+                    tmp.mean(),
+                    tmp.var(),
+                )
+            )
+    col_names = ["Patient_ID", "Sentence_ID", "Diagnosis", "Mean_IKI", "Var_IKI"]
+    df_iki = remap_English_MJFF_participant_ids(pd.DataFrame(data, columns=col_names))
+    df_iki.dropna(inplace=True)
+    df_iki.reset_index(drop=True, inplace=True)
+    assert not df_iki.isnull().values.any()
+
+    return df_iki
+
+
+def calculate_all_baseline_ROC_curves(df):
+    measures = ["edit_distance", "Mean_IKI", "Diagnosis"]
+    assert set(measures).issubset(df.columns)
+    all_combinations = ["edit_distance", "Mean_IKI", ["edit_distance", "Mean_IKI"]]
+    # Store all results in a dict which will be passed to plotting
+    results = {"I": None, "II": None, "III": None}
+    for i, j in zip(all_combinations, results.keys()):
+        if isinstance(i, list):
+            X = df[i].to_numpy()
+        else:
+            X = df[i].to_numpy().reshape(-1, 1)
+        # targets
+        y = df.Diagnosis.to_numpy()
+
+        # We use 25% of our data for test [sklearn default]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
+
+        # Classify
+        clf = SVC(class_weight="balanced", gamma="auto", probability=True)
+        clf.fit(X_train, y_train)
+        y_probas = clf.predict_proba(X_test)
+
+        # Store
+        results[j] = (y_test, y_probas[:, 1])
+
+    return results
+
+
+def combine_iki_and_edit_distance(df_edit, df_iki):
+    df_edit["Mean_IKI"] = ""
+    for idx in df_edit.Patient_ID.unique():
+        for sent_idx in df_edit.loc[df_edit.Patient_ID == idx].Sentence_ID:
+            a = float(df_iki[(df_iki.Patient_ID == idx) & (df_iki.Sentence_ID == int(sent_idx))]["Mean_IKI"])
+            df_edit.loc[(df_edit.Patient_ID == idx) & (df_edit.Sentence_ID == sent_idx), "Mean_IKI"] = a
+
+    return df_edit
+
+
+def get_edit_distance_df(df, ref):
+    df["edit_distance"] = ""
+    for idx in df.Patient_ID.unique():
+        for sent_idx in df.loc[df.Patient_ID == idx].Sentence_ID:
+            a = df[(df.Patient_ID == idx) & (df.Sentence_ID == sent_idx)]["Preprocessed_typed_sentence"].values[0]
+            b = ref[ref.sentence_id == int(sent_idx)]["sentence_text"].values[0]
+            df.loc[(df.Patient_ID == idx) & (df.Sentence_ID == sent_idx), "edit_distance"] = ed(a, b)
     return df

@@ -52,6 +52,47 @@ def get_flair_labels_and_label_probabilities():
     return predicted_labels, predicted_labels_probs
 
 
+def plot_superimposed_roc_curves(data: dict, filename=None) -> None:
+
+    if filename:
+        assert type(filename) == str
+
+    # Set styles for paper
+    sns.set_context("paper")
+    mpl.rcParams.update(nice_fonts)
+
+    lw = 2
+    fig, ax = plt.subplots(1, 1, figsize=(3, 3))
+    current_palette = sns.color_palette("Blues", 4)
+    for i, item in enumerate(data.keys()):
+        y_true, y_scores = data[item]
+        # Main calculations here
+        fpr, tpr, _ = roc_curve(y_true, y_scores, pos_label=1)
+        # Calculate area under the ROC curve here
+        auc = np.trapz(tpr, fpr)
+        ax.plot(fpr, tpr, color=current_palette[i], lw=lw, label="%s: AUC = %0.2f" % (item, auc))
+
+    ax.plot([0, 1], [0, 1], color="gray", lw=lw, linestyle="--", alpha=0.5)
+    ax.set_xlim([0.0, 1.0])
+    ax.set_ylim([0.0, 1.05])
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    # Legend
+    ax.legend(loc="lower right", framealpha=1, fancybox=False, borderpad=1)
+    # Grid
+    ax.grid(True, alpha=0.2)
+
+    if filename:
+        # Set reference time for save
+        now = datetime.datetime.now()
+        fig.savefig(
+            "../figures/baseline_roc_curves-" + filename + "-" + now.strftime("%Y-%m-%d-%H:%M") + ".pdf",
+            bbox_inches="tight",
+        )
+    else:
+        plt.show()
+
+
 def plot_roc_curve_simple(y_true, y_scores, filename=None):
     """
     Plot receiver-operating curve.
@@ -75,7 +116,7 @@ def plot_roc_curve_simple(y_true, y_scores, filename=None):
     # Calculate area under the ROC curve here
     auc = np.trapz(tpr, fpr)
 
-    fig, ax = plt.subplots(1, 1, figsize=(3, 3))
+    fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     lw = 2
     ax.plot(fpr, tpr, color="red", lw=lw, label="ROC curve (area = %0.2f)" % auc)
     ax.plot([0, 1], [0, 1], color="blue", lw=lw, linestyle="--")
