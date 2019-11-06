@@ -629,8 +629,6 @@ def sentence_level_pause_correction_mjff(
     df = df.groupby("sentence_id").filter(lambda x: x["sentence_id"].count() > char_count_response_threshold)
     assert not df.empty
 
-    # Get the unique number of participants (control AND pd)
-    subjects = sorted(set(df.participant_id))  # NOTE: set() is weakly random
     # Sentence identifiers
     sentences = sorted(set(df.sentence_id))  # NOTE: set() is weakly random
 
@@ -648,8 +646,9 @@ def sentence_level_pause_correction_mjff(
     # Loop over all sentences
     for sent in sentences:
         timestamp_diffs = []
-        # Loop over all subjects
-        for sub in subjects:
+        # Loop over all subjects which have typed this sentence
+        for sub in df.loc[(df.sentence_id == sent)].participant_id.unique():
+
             # Get all delta timestamps for this sentence, across all subjects
             tmp = df.loc[(df.sentence_id == sent) & (df.participant_id == sub)].timestamp.diff().tolist()
             # Store for later
@@ -681,7 +680,8 @@ def sentence_level_pause_correction_mjff(
 
     # Search all delta timestamps and replace which exeed cut_off_value
     for sent in sentences:
-        for sub in subjects:
+        # Loop over all subjects which have typed this sentence
+        for sub in df.loc[(df.sentence_id == sent)].participant_id.unique():
 
             # Make temporary conversion to numpy array
             x = corrected_timestamp_diff[sent][sub][1:]  # (remove the first entry as it is a NaN)
@@ -760,9 +760,27 @@ def create_char_compression_time_mjff_data(
     return char_compression_sentences
 
 
-def create_char_mjff_data(df: pd.DataFrame, char_count_response_threshold=40) -> Tuple[dict, list]:
+def create_char_mjff_data(df: pd.DataFrame, char_count_response_threshold: int = 40, invokation_type: int = 1) -> dict:
+    """
+    Function combines the typed characters, per sentence, per subject, to form proper sentences using various forms of error invokation.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Raw data is stored in this dataframe
+    char_count_response_threshold : int, optional
+        Some sentences are too short hence need to be filered out, by default 40
+    invokation_type : int, optional
+        Selects which type of backstop correction we invoke, by default 1
+
+    Returns
+    -------
+    dict
+        Dictionary indexed by subjects, containing all sentences per subject
+    """
 
     assert set(["participant_id", "key", "timestamp", "sentence_id"]).issubset(df.columns)
+
     # Filter out responses where the number of characters per typed
     # response, is below a threshold value (40 by default)
     df = df[df.groupby(["participant_id", "sentence_id"]).key.transform("count") > char_count_response_threshold]
@@ -783,13 +801,14 @@ def create_char_mjff_data(df: pd.DataFrame, char_count_response_threshold=40) ->
             coordinates = (df.participant_id == subj_idx) & (df.sentence_id == sent_idx)
 
             # "correct" the sentence by operating on user backspaces
-            corrected_char_sentence, _ = backspace_corrector(df.loc[coordinates, "key"].tolist())
+            corrected_char_sentence, _ = backspace_corrector(
+                df.loc[coordinates, "key"].tolist(), invokation_type=invokation_type
+            )
 
-            # Make long-format version of each typed, corrected, sentence
             # Note that we remove the last character to make the calculation correct.
             char_sentences[subj_idx][sent_idx] = corrected_char_sentence
 
-    # No one likes an empty list so we remove them here
+    # Combines the string
     for subj_idx in subjects:
         # Not all subjects have typed all sentences hence we have to do it this way
         for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
@@ -1074,7 +1093,27 @@ def remove_leading_backspaces(x, removal_character):
 
 def backspace_corrector(
     sentence: list, removal_character="backspace", invokation_type=1, verbose: bool = False
-) -> list:
+) -> Tuple[list, list]:
+    """
+    Method corrects the sentence by logically acting on the backspaces invoked by the
+    subject.
+
+    Parameters
+    ----------
+    sentence : list
+        List of characters which form a sentence when combined
+    removal_character : str, optional
+        Which character is encoded by as a removal action, by default "backspace"
+    invokation_type : int, optional
+        Selects which type of invokation we employ, by default 1
+    verbose : bool, optional
+        Prints out the edits being made, by default False
+
+    Returns
+    -------
+    Tuple[list, list]
+        The corrected sentence and coordinates removed
+    """
 
     # TODO: remember that this proceedure has changed, needs to mimic the behaviour of the MRC functionality: i.e. the error is kept in the sentence.
 
@@ -1088,11 +1127,11 @@ def backspace_corrector(
         # Return an empty list which will get filtered out at the next stage
         return []
 
-    # SPECIAL CASE: WE KEEP THE BACKSPACE AN ENCODE IT AS A CHARACTER FOR USE IN E.G. A charCNN MODEL
-
+    # Special case: the backspace action is kept in the sentence but replaced with a single
+    # character to map the action to a single unit.
     if invokation_type == -1:
         # In place of 'backspace' we use a pound-sign
-        return ["£" if x == removal_character else x for x in sentence], None
+        return ["#" if x == removal_character else x for x in sentence], None
 
     # Apply to passed sentence
     pre_removal_length = len(sentence)
@@ -1215,7 +1254,9 @@ def remap_English_MJFF_participant_ids(df):
     return df.replace({"Patient_ID": replacement_ids})
 
 
-def create_MJFF_dataset(language="english", include_time=True, attempt=1) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def create_MJFF_dataset(
+    language="english", include_time=True, attempt=1, invokation_type=1
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     End-to-end creation of raw data to NLP readable train and test sets.
 
@@ -1279,7 +1320,7 @@ def create_MJFF_dataset(language="english", include_time=True, attempt=1) -> Tup
         out = create_char_compression_time_mjff_data(df)
     else:
         # This option _only_ includes the characters.
-        out = create_char_mjff_data(df)
+        out = create_char_mjff_data(df, invokation_type=invokation_type)
 
     # Final formatting of typing data
     df = create_dataframe_from_processed_data(out, df_meta).reset_index(drop=True)
@@ -1433,16 +1474,17 @@ def create_proper_spanish_letters(df: pd.DataFrame) -> pd.DataFrame:
 # Basline calculation stuff
 
 
-def create_mjff_baselines(df, df_meta, attempt=1):
+def create_mjff_baselines(df, df_meta, attempt=1, invokation_type=1):
 
     # Select which attempt we are considering
     df = select_attempt(df, df_meta, attempt)
 
     # First calculate the IKI for each sentence
-    df_iki = get_iki_baseline_df(df, df_meta)
+    # TODO: does this need to be moved after the edit-distance?
+    df_iki = get_iki_baseline_df(df, df_meta, invokation_type)
 
     # Second calculate the edit-distance
-    df, reference_sentences = create_MJFF_dataset("english", False, attempt)
+    df, reference_sentences = create_MJFF_dataset("english", False, attempt, invokation_type)
     df_edit = get_edit_distance_df(df, reference_sentences)
 
     # Combine all measures
@@ -1452,28 +1494,50 @@ def create_mjff_baselines(df, df_meta, attempt=1):
     return df
 
 
-def get_iki_baseline_df(df, df_meta):
-    # Drop too short sentences
-    char_count_response_threshold = 40
-    df = df[df.groupby(["participant_id", "sentence_id"]).key.transform("count") > char_count_response_threshold]
+def get_iki_baseline_df(df, df_meta, invokation_type):
 
     # Corrected compression times (i.e. timestamp difference / delta)
-
     # TODO: this needs to be updated to match the MRC format
     corrected_compression_times = sentence_level_pause_correction_mjff(df)
 
     data = []
-    for sent_idx in corrected_compression_times.keys():
-        for participant in corrected_compression_times[sent_idx]:
-            tmp = corrected_compression_times[sent_idx][participant][1:]
+    for sentence in corrected_compression_times.keys():
+        for participant in corrected_compression_times[sentence]:
+
+            if invokation_type == 1:
+                # Find the correction to the IKI
+
+                # Locate df segment to extract
+                coordinates = (df.participant_id == participant) & (df.sentence_id == sentence)
+                print(participant, sentence)
+                # "correct" the sentence by operating on user backspaces
+                _, removed_chars_indx = backspace_corrector(
+                    df.loc[coordinates, "key"].tolist(), invokation_type=invokation_type
+                )
+
+                L = len(corrected_compression_times[sentence][participant])
+                assert set(removed_chars_indx).issubset(
+                    range(L)
+                ), "Indices to remove: {} -- total length of timestamp vector: {}".format(removed_chars_indx, L)
+
+                # Adjust actual compression times
+                iki = corrected_compression_times[sentence][participant].drop(index=removed_chars_indx)
+
+            elif invokation_type == -1:
+                # Uncorrected IKI extracted here
+                iki = corrected_compression_times[sentence][participant][1:]
+            else:
+                # TODO: clean this up for other options
+                raise ValueError
+
             # Append to list which we'll pass to a dataframe in subsequent cells
             data.append(
                 (
                     participant,
-                    sent_idx,
+                    sentence,
                     int(df_meta.loc[(df_meta.participant_id == participant), "diagnosis"]),
-                    tmp.mean(),
-                    tmp.var(),
+                    iki.mean(),
+                    iki.var(),
                 )
             )
     col_names = ["Patient_ID", "Sentence_ID", "Diagnosis", "Mean_IKI", "Var_IKI"]
