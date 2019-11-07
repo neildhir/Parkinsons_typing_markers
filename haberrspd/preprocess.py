@@ -3,7 +3,7 @@ import re
 import socket
 import warnings
 from collections import Counter, defaultdict
-from itertools import count, groupby
+from itertools import count, groupby, chain
 from operator import itemgetter
 from pathlib import Path
 from typing import Tuple
@@ -1092,7 +1092,7 @@ def remove_leading_backspaces(x, removal_character):
 
 
 def backspace_corrector(
-    sentence: list, removal_character="backspace", invokation_type=1, verbose: bool = False
+    sentence: list, removal_character="backspace", invokation_type=1, verbose: bool = False, indicator_character="€"
 ) -> Tuple[list, list]:
     """
     Method corrects the sentence by logically acting on the backspaces invoked by the
@@ -1108,14 +1108,14 @@ def backspace_corrector(
         Selects which type of invokation we employ, by default 1
     verbose : bool, optional
         Prints out the edits being made, by default False
+    indicator_character: str, optional
+        Indicates where in the sentence a correction has been mad (matches MRC data)
 
     Returns
     -------
     Tuple[list, list]
-        The corrected sentence and coordinates removed
+        Corrected sentece with correction indicator included
     """
-
-    # TODO: remember that this proceedure has changed, needs to mimic the behaviour of the MRC functionality: i.e. the error is kept in the sentence.
 
     # Want to pass things as list because it easier to work with w.r.t. to strings
     assert isinstance(sentence, list)
@@ -1133,14 +1133,8 @@ def backspace_corrector(
         # In place of 'backspace' we use a pound-sign
         return ["#" if x == removal_character else x for x in sentence], None
 
-    # Apply to passed sentence
-    pre_removal_length = len(sentence)
-    sentence = remove_leading_backspaces(sentence, removal_character)
-    post_removal_length = len(sentence)
-    nr_leading_chars_removed = pre_removal_length - post_removal_length
-
-    # Generate coordinates of all items to remove
-    remove_cords = []
+    # Coordinates which will be replaced by an error-implementation indicator
+    indication_cords = []
 
     # Find the indices of all the reamaining backspace occurences
     backspace_indices = np.where(np.asarray(sentence) == removal_character)[0]
@@ -1156,49 +1150,44 @@ def backspace_corrector(
         for group in backspace_groups:
             # A singular backspace
             if len(group) == 1:
-                remove_cords.extend([group[0] - 1, group[0]])
+                indication_cords.extend([group[0] - 1, group[0]])
 
             else:
-                remove_cords.extend(range_extend(group))
+                indication_cords.extend(range_extend(group))
 
     elif invokation_type == 1:
-        # Remove all characters indicated by 'backspace' _except_ the last character which is kept
-
+        # Replace all characters indicated by 'backspace' _except_ the last character which is kept
         for group in backspace_groups:
-
-            # Solitary backspace removal proceedure
             if len(group) == 1:
-                # We do it this way because: because we want to capture these error slips
-                remove_cords.extend([group[0]])
-                # Remove _just_ the backspace and nothing else, don't invoke
+
+                # Replace backspace with indicator character inline
+                sentence[group[0]] = indicator_character
+
             else:
-                # XXX: this _may_ introduce negative indices at the start of a sentence
+                # This _may_ introduce negative indices at the start of a sentence
                 # these are filtered out further down
-                remove_cords.extend(range_extend(group[:-1]))  # This invokes the n-1 backspaces
-                # This removes the nth backspace and the immediately following character
-                remove_cords.extend([group[-1], group[-1] + 1])
+                indication_cords.extend(range_extend(group[:-1]))  # This invokes the n-1 backspaces
 
     else:
         raise ValueError
 
     # Filter out negative indices which are non-sensical for deletion (arises when more backspaces than characters in beginning of sentence)
-    remove_cords = list(filter(lambda x: x >= 0, remove_cords))
+    indication_cords = list(filter(lambda x: x >= 0, indication_cords))
+
     # Filter out deletion indices which appear at the end of the sentence as part of a contiguous group of backspaces
-    remove_cords = list(filter(lambda x: x < len(original_sentence), remove_cords))
-    # Do actual deletion
-    invoked_sentence = np.delete(sentence, remove_cords).tolist()
+    indication_cords = list(filter(lambda x: x < len(original_sentence), indication_cords))
+
+    # Replace backspace action with an indicator
+    invoked_sentence = np.delete(sentence, indication_cords).tolist()
+
+    # Replace remaining backspace with indicator
+    invoked_sentence = [indicator_character if x == removal_character else x for x in invoked_sentence]
 
     if verbose:
         print("Original sentence: {}\n".format(original_sentence))
         print("Edited sentence: {} \n -----".format(invoked_sentence))
 
-    if nr_leading_chars_removed == 0:
-        # No leading backspaces found, so we do not have to update the index list
-        return invoked_sentence, remove_cords
-    else:
-        # Update indices to match the originals
-        remove_cords = [i + nr_leading_chars_removed for i in remove_cords]
-        return invoked_sentence, list(range(nr_leading_chars_removed)) + remove_cords
+    return invoked_sentence, list(chain.from_iterable(backspace_groups))
 
 
 def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame) -> pd.DataFrame:
@@ -1477,11 +1466,11 @@ def create_proper_spanish_letters(df: pd.DataFrame) -> pd.DataFrame:
 def create_mjff_baselines(df, df_meta, attempt=1, invokation_type=1):
 
     # Select which attempt we are considering
-    df = select_attempt(df, df_meta, attempt = attempt)
+    df = select_attempt(df, df_meta, attempt=attempt)
 
     # First calculate the IKI for each sentence
     # TODO: does this need to be moved after the edit-distance?
-    df_iki = get_iki_baseline_df(df, df_meta, invokation_type = invokation_type)
+    df_iki = get_iki_baseline_df(df, df_meta, invokation_type=invokation_type)
 
     # Second calculate the edit-distance
     df, reference_sentences = create_MJFF_dataset("english", False, attempt, invokation_type)
@@ -1598,7 +1587,6 @@ def combine_iki_and_edit_distance(df_edit, df_iki):
 
 
 def get_edit_distance_df(df, ref):
-    assert len(df.attempt.unique()) == 1
     df["edit_distance"] = ""
     for idx in df.Patient_ID.unique():
         for sent_idx in df.loc[df.Patient_ID == idx].Sentence_ID:
