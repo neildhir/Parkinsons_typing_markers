@@ -76,18 +76,14 @@ def plot_superimposed_roc_curves(data: dict, filename=None) -> None:
 
     lw = 2
     fig, ax = plt.subplots(1, 1, figsize=(3, 3))
-    # Number of colours per model
-    kk = len(data) // 2
-    palette = sns.color_palette("Blues", kk)
-    red_palette = sns.color_palette("Greens", kk)
-    palette.extend(red_palette)
+    palette = sns.color_palette(n_colors=len(data))
     for i, item in enumerate(data.keys()):
         y_true, y_scores = data[item]
         # Main calculations here
         fpr, tpr, _ = roc_curve(y_true, y_scores, pos_label=1)
         # Calculate area under the ROC curve here
         auc = np.trapz(tpr, fpr)
-        ax.plot(fpr, tpr, color=palette[i], lw=lw, alpha=0.7, label="%s: AUC = %0.2f" % (item, auc))
+        ax.plot(fpr, tpr, color=palette[i], lw=lw, alpha=0.8, label="%s: AUC = %0.2f" % (item, auc))
 
     ax.plot([0, 1], [0, 1], color="gray", lw=lw, linestyle="--", alpha=0.25)
     ax.set_xlim([0.0, 1.0])
