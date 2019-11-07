@@ -57,28 +57,45 @@ def plot_superimposed_roc_curves(data: dict, filename=None) -> None:
     if filename:
         assert type(filename) == str
 
+    if ~isinstance(data, dict):
+        # We've been passed a list of dicts
+        assert all([isinstance(x, dict) for x in data])
+        # Combine them
+        if len(data) == 2:
+            assert set(["I", "II"]).issubset(data[0].keys())
+            assert set(["I", "II"]).issubset(data[1].keys())
+            data[1]["III"] = data[1].pop("I")
+            data[1]["IV"] = data[1].pop("II")
+            data = {**data[0], **data[1]}
+        else:
+            raise ValueError
+
     # Set styles for paper
     sns.set_context("paper")
     mpl.rcParams.update(nice_fonts)
 
     lw = 2
     fig, ax = plt.subplots(1, 1, figsize=(3, 3))
-    current_palette = sns.color_palette("Blues", 4)
+    # Number of colours per model
+    kk = len(data) // 2
+    palette = sns.color_palette("Blues", kk)
+    red_palette = sns.color_palette("Greens", kk)
+    palette.extend(red_palette)
     for i, item in enumerate(data.keys()):
         y_true, y_scores = data[item]
         # Main calculations here
         fpr, tpr, _ = roc_curve(y_true, y_scores, pos_label=1)
         # Calculate area under the ROC curve here
         auc = np.trapz(tpr, fpr)
-        ax.plot(fpr, tpr, color=current_palette[i], lw=lw, label="%s: AUC = %0.2f" % (item, auc))
+        ax.plot(fpr, tpr, color=palette[i], lw=lw, alpha=0.7, label="%s: AUC = %0.2f" % (item, auc))
 
-    ax.plot([0, 1], [0, 1], color="gray", lw=lw, linestyle="--", alpha=0.5)
+    ax.plot([0, 1], [0, 1], color="gray", lw=lw, linestyle="--", alpha=0.25)
     ax.set_xlim([0.0, 1.0])
     ax.set_ylim([0.0, 1.05])
     ax.set_xlabel("False Positive Rate")
     ax.set_ylabel("True Positive Rate")
     # Legend
-    ax.legend(loc="lower right", framealpha=1, fancybox=False, borderpad=1)
+    ax.legend(loc="lower right", ncol=1, framealpha=1, fancybox=False, borderpad=0.5)
     # Grid
     ax.grid(True, alpha=0.2)
 

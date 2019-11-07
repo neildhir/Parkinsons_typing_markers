@@ -1477,11 +1477,11 @@ def create_proper_spanish_letters(df: pd.DataFrame) -> pd.DataFrame:
 def create_mjff_baselines(df, df_meta, attempt=1, invokation_type=1):
 
     # Select which attempt we are considering
-    df = select_attempt(df, df_meta, attempt)
+    df = select_attempt(df, df_meta, attempt = attempt)
 
     # First calculate the IKI for each sentence
     # TODO: does this need to be moved after the edit-distance?
-    df_iki = get_iki_baseline_df(df, df_meta, invokation_type)
+    df_iki = get_iki_baseline_df(df, df_meta, invokation_type = invokation_type)
 
     # Second calculate the edit-distance
     df, reference_sentences = create_MJFF_dataset("english", False, attempt, invokation_type)
@@ -1496,12 +1496,16 @@ def create_mjff_baselines(df, df_meta, attempt=1, invokation_type=1):
 
 def get_iki_baseline_df(df, df_meta, invokation_type):
 
+    assert len(df.attempt.unique()) == 1
+
     # Corrected compression times (i.e. timestamp difference / delta)
     # TODO: this needs to be updated to match the MRC format
     corrected_compression_times = sentence_level_pause_correction_mjff(df)
 
     data = []
+    # Loop over sentence IDs
     for sentence in corrected_compression_times.keys():
+        # Loop over participant IDs
         for participant in corrected_compression_times[sentence]:
 
             if invokation_type == 1:
@@ -1509,23 +1513,27 @@ def get_iki_baseline_df(df, df_meta, invokation_type):
 
                 # Locate df segment to extract
                 coordinates = (df.participant_id == participant) & (df.sentence_id == sentence)
-                print(participant, sentence)
-                # "correct" the sentence by operating on user backspaces
-                _, removed_chars_indx = backspace_corrector(
-                    df.loc[coordinates, "key"].tolist(), invokation_type=invokation_type
-                )
 
-                L = len(corrected_compression_times[sentence][participant])
-                assert set(removed_chars_indx).issubset(
-                    range(L)
-                ), "Indices to remove: {} -- total length of timestamp vector: {}".format(removed_chars_indx, L)
+                # Not all participants typed all sentences, this conditions check that
+                if len(df[coordinates]) != 0:
 
-                # Adjust actual compression times
-                iki = corrected_compression_times[sentence][participant].drop(index=removed_chars_indx)
+                    # "correct" the sentence by operating on user backspaces
+                    _, removed_chars_indx = backspace_corrector(
+                        df.loc[coordinates, "key"].tolist(), invokation_type=invokation_type
+                    )
+
+                    L = len(corrected_compression_times[sentence][participant])
+                    assert set(removed_chars_indx).issubset(
+                        range(L)
+                    ), "Indices to remove: {} -- total length of timestamp vector: {}".format(removed_chars_indx, L)
+
+                    # Adjust actual compression times
+                    iki = corrected_compression_times[sentence][participant].drop(index=removed_chars_indx)
 
             elif invokation_type == -1:
                 # Uncorrected IKI extracted here
                 iki = corrected_compression_times[sentence][participant][1:]
+
             else:
                 # TODO: clean this up for other options
                 raise ValueError
@@ -1540,6 +1548,7 @@ def get_iki_baseline_df(df, df_meta, invokation_type):
                     iki.var(),
                 )
             )
+
     col_names = ["Patient_ID", "Sentence_ID", "Diagnosis", "Mean_IKI", "Var_IKI"]
     df_iki = remap_English_MJFF_participant_ids(pd.DataFrame(data, columns=col_names))
     df_iki.dropna(inplace=True)
@@ -1549,12 +1558,13 @@ def get_iki_baseline_df(df, df_meta, invokation_type):
     return df_iki
 
 
-def calculate_all_baseline_ROC_curves(df):
+def calculate_all_baseline_ROC_curves(df, test_size=0.25):
     measures = ["edit_distance", "Mean_IKI", "Diagnosis"]
     assert set(measures).issubset(df.columns)
-    all_combinations = ["edit_distance", "Mean_IKI", ["edit_distance", "Mean_IKI"]]
+    all_combinations = ["Mean_IKI", ["edit_distance", "Mean_IKI"]]
     # Store all results in a dict which will be passed to plotting
-    results = {"I": None, "II": None, "III": None}
+    results = {"I": None, "II": None}
+    assert len(results) == len(all_combinations)
     for i, j in zip(all_combinations, results.keys()):
         if isinstance(i, list):
             X = df[i].to_numpy()
@@ -1564,7 +1574,7 @@ def calculate_all_baseline_ROC_curves(df):
         y = df.Diagnosis.to_numpy()
 
         # We use 25% of our data for test [sklearn default]
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
 
         # Classify
         clf = SVC(class_weight="balanced", gamma="auto", probability=True)
@@ -1588,6 +1598,7 @@ def combine_iki_and_edit_distance(df_edit, df_iki):
 
 
 def get_edit_distance_df(df, ref):
+    assert len(df.attempt.unique()) == 1
     df["edit_distance"] = ""
     for idx in df.Patient_ID.unique():
         for sent_idx in df.loc[df.Patient_ID == idx].Sentence_ID:
