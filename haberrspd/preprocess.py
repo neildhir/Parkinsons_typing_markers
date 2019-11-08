@@ -3,9 +3,10 @@ import re
 import socket
 import warnings
 from collections import Counter, defaultdict
-from itertools import count, groupby, chain
+from itertools import chain, count, groupby
 from operator import itemgetter
 from pathlib import Path
+from statistics import mean, median
 from typing import Tuple
 
 import numpy as np
@@ -13,9 +14,10 @@ import pandas as pd
 from nltk import edit_distance as ed
 from nltk.metrics import edit_distance  # Levenshtein
 from scipy.stats import gamma, gengamma, lognorm
-from sklearn.model_selection import train_test_split
+from sklearn.metrics import auc, roc_curve, confusion_matrix
+from sklearn.model_selection import train_test_split, ShuffleSplit
 from sklearn.svm import SVC  # Support vector classifier
-from sklearn.metrics import roc_curve, auc
+from sklearn.ensemble import RandomForestClassifier
 
 from .__init_paths import data_root
 
@@ -1550,15 +1552,26 @@ def get_iki_baseline_df(df, df_meta, invokation_type):
 def calculate_all_baseline_ROC_curves(df, test_size=0.25):
     measures = ["edit_distance", "Mean_IKI", "Diagnosis"]
     assert set(measures).issubset(df.columns)
-    all_combinations = ["Mean_IKI", ["edit_distance", "Mean_IKI"]]
+    features = ["Mean_IKI", ["edit_distance", "Mean_IKI"]]
     # Store all results in a dict which will be passed to plotting
     results = {"I": None, "II": None}
-    assert len(results) == len(all_combinations)
-    for i, j in zip(all_combinations, results.keys()):
+    assert len(results) == len(features)
+    for i, j in zip(features, results.keys()):
+        # List of features
         if isinstance(i, list):
-            X = df[i].to_numpy()
+            # 100 here is the upper limit on the total number of participants
+            if df[i].shape[0] < 100:
+                X = np.hstack([np.vstack(df[j]) for j in i])
+            else:
+                X = df[i].to_numpy()
+        # Singular feature
         else:
-            X = df[i].to_numpy().reshape(-1, 1)
+            # 100 here is the upper limit on the total number of participants
+            if df[i].shape[0] < 100:
+                X = np.vstack(df[i])
+            else:
+                X = df[i].to_numpy().reshape(-1, 1)
+
         # targets
         y = df.Diagnosis.to_numpy()
 
@@ -1566,7 +1579,8 @@ def calculate_all_baseline_ROC_curves(df, test_size=0.25):
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
 
         # Classify
-        clf = SVC(class_weight="balanced", gamma="auto", probability=True)
+        # clf = SVC(class_weight="balanced", gamma="auto", probability=True)
+        clf = RandomForestClassifier(n_estimators=500, class_weight="balanced")
         clf.fit(X_train, y_train)
         y_probas = clf.predict_proba(X_test)
 
@@ -1594,3 +1608,101 @@ def get_edit_distance_df(df, ref):
             b = ref[ref.sentence_id == int(sent_idx)]["sentence_text"].values[0]
             df.loc[(df.Patient_ID == idx) & (df.Sentence_ID == sent_idx), "edit_distance"] = ed(a, b)
     return df
+
+
+def convert_df_to_subject_level(df: pd.DataFrame) -> pd.DataFrame:
+
+    subjects = sorted(df.Patient_ID.unique())
+    sentences = set(df.Sentence_ID)
+
+    missing_sentences = defaultdict(list)
+
+    # Check to see what entries are missing and where
+    for sub in subjects:
+        # Check if all sentences have been attempted
+        tmp_set = set(df[df.Patient_ID == sub].Sentence_ID)
+        if not sentences.issubset(tmp_set):
+            # Find intersection and insert np.nan att missing places
+            missing_sentences[sub].extend(sentences - tmp_set)
+
+    # Edit distance
+    df_subject = df.groupby(["Patient_ID", "Diagnosis"]).edit_distance.apply(list).reset_index()
+    # Mean IKI
+    tmp = df.groupby(["Patient_ID", "Diagnosis"]).Mean_IKI.apply(list).reset_index()
+    assert np.array_equal(df_subject.Patient_ID.values, tmp.Patient_ID.values)
+    assert np.array_equal(df_subject.Diagnosis.values, tmp.Diagnosis.values)
+    df_subject["Mean_IKI"] = tmp.Mean_IKI
+
+    # Append N mean and median values at missig locations
+    for sub in missing_sentences.keys():
+        N = len(missing_sentences[sub])
+        loc = df_subject.Patient_ID == sub
+        ed = int(median(df_subject[loc].edit_distance.tolist()[0]))
+        iki = mean(df_subject[loc].Mean_IKI.tolist()[0])
+        # Extend
+        df_subject[loc].edit_distance.tolist()[0].extend(N * [ed])
+        df_subject[loc].Mean_IKI.tolist()[0].extend(N * [iki])
+
+    df_subject.reset_index(inplace=True, drop=True)
+    return df_subject
+
+
+def test_different_splits_for_classification(Z):
+
+    X, y = Z
+    r = RandomForestClassifier(n_estimators=256, class_weight="balanced")
+    rs = ShuffleSplit(n_splits=100, test_size=0.25)
+
+    AUC = []
+
+    # Crossvalidate the scores on a number of different random splits of the data
+    for train_idx, test_idx in rs.split(X):
+        X_train, X_test = X[train_idx], X[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]
+        r.fit(X_train, y_train)
+        y_probas = r.predict_proba(X_test)
+        y_pred = r.predict(X_test)
+        # Confusion mat
+        tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
+        # Main calculations here
+        fpr, tpr, _ = roc_curve(y_test, y_probas[:, 1], pos_label=1)
+        # Calculate area under the ROC curve here
+        auc = np.trapz(tpr, fpr)
+        AUC.append(auc)
+
+    nauc = np.array(AUC)
+
+    return nauc.mean().round(3), nauc.std().round(3)
+
+
+def get_X_and_y_from_df(df):
+
+    measures = ["edit_distance", "Mean_IKI", "Diagnosis"]
+    assert set(measures).issubset(df.columns)
+    features = ["Mean_IKI", ["edit_distance", "Mean_IKI"]]
+
+    # Store all results in a dict which will be passed to plotting
+    sets = {"I": None, "II": None}
+    assert len(sets) == len(features)
+    for i, j in zip(features, sets.keys()):
+        # List of features
+        if isinstance(i, list):
+            # 100 here is the upper limit on the total number of participants
+            if df[i].shape[0] < 100:
+                X = np.hstack([np.vstack(df[j]) for j in i])
+            else:
+                X = df[i].to_numpy()
+        # Singular feature
+        else:
+            # 100 here is the upper limit on the total number of participants
+            if df[i].shape[0] < 100:
+                X = np.vstack(df[i])
+            else:
+                X = df[i].to_numpy().reshape(-1, 1)
+
+        # targets
+        y = df.Diagnosis.to_numpy()
+
+        sets[j] = (X, y)
+
+    return sets
