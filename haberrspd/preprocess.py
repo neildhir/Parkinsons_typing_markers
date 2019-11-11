@@ -297,13 +297,6 @@ def combine_contiguous_shift_keydowns_without_matching_keyup(df, shift_char="β"
     df.reset_index(drop=True, inplace=True)
 
 
-def range_extend_mrc(x):
-    # Need to assert that this is given a sequentially ordered array
-    out = list(range(x[0] - 2 * len(x), x[0] - len(x))) + list(range(x[0] - len(x), x[0])) + x
-    assert np.diff(out).sum() == len(out) - 1
-    return out
-
-
 def make_character_compression_time_sentence_mrc(df: pd.DataFrame, time_redux_fact=10) -> str:
     long_form_sentence = []
     for i in list(df.index)[::2]:
@@ -315,6 +308,13 @@ def make_character_compression_time_sentence_mrc(df: pd.DataFrame, time_redux_fa
     return flatten(long_form_sentence)
 
 
+def range_extend_mrc(x):
+    # Need to assert that this is given a sequentially ordered array
+    out = list(range(x[0] - 2 * len(x), x[0] - len(x))) + list(range(x[0] - len(x), x[0])) + x
+    assert np.diff(out).sum() == len(out) - 1
+    return out
+
+
 def backspace_implementer_mrc(df: pd.DataFrame, backspace_char="α"):
 
     # 0) Remove any singular backspaces that appear bc. data-reading problems
@@ -323,6 +323,7 @@ def backspace_implementer_mrc(df: pd.DataFrame, backspace_char="α"):
     remove = []
     for k, g in groupby(enumerate(sorted(idxs)), lambda ix: ix[1] - ix[0]):
         groups.append(list(map(itemgetter(1), g)))
+
     # Only remove ones which are actually only of list length 1
     for g in groups:
         # Data-reading error
@@ -344,7 +345,7 @@ def backspace_implementer_mrc(df: pd.DataFrame, backspace_char="α"):
     # 1) Delete all backspace+keyups to start with
     idxs_up = df.index[(df.key == backspace_char) & (df.type == "keyup")].tolist()
     # Copy these rows for later use
-    df_keyup = copy.copy(df.iloc[idxs_up])
+    df_keyup = df.iloc[idxs_up].copy()
     # In-place dropping of these rows
     df.drop(df.index[idxs_up], inplace=True)
     # Reset index so that we can sort it properly in the next step
