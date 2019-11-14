@@ -200,7 +200,7 @@ def create_sentences_from_raw_typing_mrc(
     return char_compression_sentences
 
 
-def remove_solitary_key_presses(df):
+def remove_solitary_key_presses(df, verbose=False):
 
     suspect_keys = []
     for key, value in Counter(df.key.tolist()).items():
@@ -209,7 +209,10 @@ def remove_solitary_key_presses(df):
             suspect_keys.append(key)
 
     # Do not remove "correction identifier key" i.e. €
-    suspect_keys = [key for key in suspect_keys if key not in {"€"}]
+    suspect_keys = [key for key in suspect_keys if key not in {"€", "α"}]
+
+    if verbose:
+        print(suspect_keys)
 
     # Find all instances of suspect keys in df
     if len(suspect_keys) != 0:
