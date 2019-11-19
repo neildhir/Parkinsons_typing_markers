@@ -6,20 +6,14 @@ from collections import Counter, defaultdict
 from itertools import chain, count, groupby
 from operator import itemgetter
 from pathlib import Path
-from statistics import mean, median
 from typing import Tuple
 
 import numpy as np
 import pandas as pd
-from nltk import edit_distance as ed
 from nltk.metrics import edit_distance  # Levenshtein
 from scipy.stats import gamma, gengamma, lognorm
-from sklearn.metrics import auc, roc_curve, confusion_matrix
-from sklearn.model_selection import train_test_split, ShuffleSplit
-from sklearn.svm import SVC  # Support vector classifier
-from sklearn.ensemble import RandomForestClassifier
 
-from .__init_paths import data_root
+from haberrspd.__init_paths import data_root
 
 # ------------------------------------------ MRC------------------------------------------ #
 
@@ -266,9 +260,6 @@ def assess_repeating_key_compression_pattern(lst, pattern=("keydown", "keyup")):
 
 
 def combine_contiguous_shift_keydowns_without_matching_keyup(df, shift_char="β"):
-    """
-    Function assumes that df has been sorted before getting this far.
-    """
 
     # Get the index of all shift keydowns (these are the ones causing the registration problems)
     idxs_down = df.index[(df["key"] == shift_char) & (df["type"] == "keydown")].tolist()
@@ -278,26 +269,72 @@ def combine_contiguous_shift_keydowns_without_matching_keyup(df, shift_char="β"
     for k, g in groupby(enumerate(idxs_down), lambda ix: ix[0] - ix[1]):
         keydown_groups.append(list(map(itemgetter(1), g)))
 
-    # Check what is inside shift groups (if they only contain 'keydown' or 'keyup' there is a problem)
-    removal_keydown_coordinates = []
-    for g in keydown_groups:
-        # Contiguous groups of shifts
-        if len(g) > 1:
-            ii = None
+    # Select only proper groups not singular shift keys
+    keydown_groups = [i for i in keydown_groups if len(i) > 1]
+    # If groups exist
+    if keydown_groups:
+        # Check what is inside shift groups (if they only contain 'keydown' or 'keyup' there is a problem)
+        removal_indices = []
+        # Only look at groups which are longer than 1
+        for g in keydown_groups:
+            # Contiguous groups of shifts
+            shift_keyup_index = None
+            # Looking at a range(1,6) is somewhat arbitrary and no proper condition
+            # for finding a more optimal range has been considered. This, however,
+            # can easily be accommodated for.
             for j in range(1, 6):
-                if (df.loc[g[-1] + j, "type"] == shift_char) and (df.loc[g[-1] + j, "key"] == shift_char):
-                    ii = j
-            if ii:
+                # This is true if we find an immediately preceeding "keyup"
+                if (df.loc[g[-1] + j, "type"] == "keyup") and (df.loc[g[-1] + j, "key"] == shift_char):
+                    shift_keyup_index = j + g[-1]
+                    # The break prevents the loop from continuing should we be at the end
+                    # if an array for example.
+                    break
+            if shift_keyup_index:
                 # Do this if the immediate key after each group is a "keyup"
-                removal_keydown_coordinates.extend(g[1:])
+                removal_indices.extend(g[1:])
+                # Move they shift+keyup index so it preceds the shift+keydown block
+                df = insert_row_in_dataframe(df, shift_keyup_index, g[-1])
             else:
                 # Do this if there is no immediately preceeding "keyup"
-                removal_keydown_coordinates.extend(g)
+                removal_indices.extend(g)
+        # Final drop and index reset
+        df.drop(df.index[removal_indices], inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        return df
+    else:
+        return df
 
-    # In-place operation, no need to return anything. Cannot reset index at this point.
-    df.drop(df.index[removal_keydown_coordinates], inplace=True)
-    # Reset index so that we can sort it properly in the next step
-    df.reset_index(drop=True, inplace=True)
+
+def insert_row_in_dataframe(df, index_to_insert, location_to_insert):
+    """Function to properly order shift up and shift down.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataframe which contains the raw data
+    index_to_insert : int
+        Index of the row we wish to move to the correct position
+    location_to_insert : int
+        The index after which we wish to insert a row.
+
+    Returns
+    -------
+    pd.DataFrame
+        A correctly ordered dataframe which consecutive keydown and keyups
+    """
+
+    assert set([index_to_insert, location_to_insert]).issubset(set(df.index))
+
+    # Row to insert
+    row = pd.DataFrame(df.loc[index_to_insert].to_dict(), index=[location_to_insert])
+    # New dataframe
+    df_new = pd.concat([df.loc[:location_to_insert], row, df.loc[(location_to_insert + 1) :]])
+    # Drop the old row at its old location
+    df_new.drop(index_to_insert, inplace=True)
+    # Reset index
+    df_new.reset_index(drop=True, inplace=True)
+
+    return df_new
 
 
 def make_character_compression_time_sentence_mrc(df: pd.DataFrame, time_redux_fact=10) -> str:
@@ -625,9 +662,31 @@ def dataset_summary_statistics(df: pd.DataFrame):
     print("Maximum sentence length: %d" % sentence_lengths.max())
 
 
-def sentence_level_pause_correction_mjff(
-    df, char_count_response_threshold=40, cut_off_percentile=0.99, correction_model="gengamma"
+def sentence_level_pause_correction(
+    df: pd.DataFrame,
+    char_count_response_threshold: int = 40,
+    cut_off_percentile: float = 0.99,
+    correction_model: str = "gengamma",
 ) -> Tuple[dict, list]:
+    """Function is used to correct the IKI, to attend to anomalies like subjects stopping mid-typing
+    to attend to other matters, thus causing faulty temporal dynamics.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataframe which contains the raw typed sentences (MJFF or MRC dataset)
+    char_count_response_threshold : int, optional
+        The minimum number of characters required for an entry to be considered a valid attempt
+    cut_off_percentile : float, optional
+        [description], by default 0.99
+    correction_model : str, optional
+        Generative model used to do adjusments, by default "gengamma"
+
+    Returns
+    -------
+    Tuple[dict, list]
+        Dictionary of sentences indexed by subject
+    """
 
     assert set(["participant_id", "key", "timestamp", "sentence_id"]).issubset(df.columns)
     # Filter out responses where the number of characters per typed
@@ -650,15 +709,15 @@ def sentence_level_pause_correction_mjff(
     pause_replacement_stats = {}
 
     # Loop over all sentences
-    for sent in sentences:
+    for sentence in sentences:
         timestamp_diffs = []
         # Loop over all subjects which have typed this sentence
-        for sub in df.loc[(df.sentence_id == sent)].participant_id.unique():
+        for subject in df.loc[(df.sentence_id == sentence)].participant_id.unique():
 
             # Get all delta timestamps for this sentence, across all subjects
-            tmp = df.loc[(df.sentence_id == sent) & (df.participant_id == sub)].timestamp.diff().tolist()
+            tmp = df.loc[(df.sentence_id == sentence) & (df.participant_id == subject)].timestamp.diff().tolist()
             # Store for later
-            corrected_timestamp_diff[sent][sub] = np.array(tmp)
+            corrected_timestamp_diff[sentence][subject] = np.array(tmp)
             # Append to get statistics over all participants
             timestamp_diffs.extend(tmp)
 
@@ -675,31 +734,31 @@ def sentence_level_pause_correction_mjff(
 
         # Set cut off value
         cut_off_value = pause_funcs_cut_off_quantile[correction_model](*((cut_off_percentile,) + params_MLE))
-        assert cut_off_value > 0, "INFO:\n\t value: {} \n\t sentence ID: {}".format(cut_off_value, sent)
+        assert cut_off_value > 0, "INFO:\n\t value: {} \n\t sentence ID: {}".format(cut_off_value, sentence)
 
         # Set replacement value
         replacement_value = pause_first_moment[correction_model](*params_MLE)
-        assert replacement_value > 0, "INFO:\n\t value: {} \n\t sentence ID: {}".format(replacement_value, sent)
+        assert replacement_value > 0, "INFO:\n\t value: {} \n\t sentence ID: {}".format(replacement_value, sentence)
 
         # Store for replacement operation in next loop
-        pause_replacement_stats[sent] = (cut_off_value, replacement_value)
+        pause_replacement_stats[sentence] = (cut_off_value, replacement_value)
 
     # Search all delta timestamps and replace which exeed cut_off_value
-    for sent in sentences:
+    for sentence in sentences:
         # Loop over all subjects which have typed this sentence
-        for sub in df.loc[(df.sentence_id == sent)].participant_id.unique():
+        for subject in df.loc[(df.sentence_id == sentence)].participant_id.unique():
 
             # Make temporary conversion to numpy array
-            x = corrected_timestamp_diff[sent][sub][1:]  # (remove the first entry as it is a NaN)
-            corrected_timestamp_diff[sent][sub] = pd.Series(
+            x = corrected_timestamp_diff[sentence][subject][1:]  # (remove the first entry as it is a NaN)
+            corrected_timestamp_diff[sentence][subject] = pd.Series(
                 # np.concatenate is faster than np.insert
                 np.concatenate(  # Add back NaN to maintain index order
                     (
                         [np.nan],
                         # Two conditions are used here
                         np.where(
-                            np.logical_or(x > pause_replacement_stats[sent][0], x < 0),
-                            pause_replacement_stats[sent][1],
+                            np.logical_or(x > pause_replacement_stats[sentence][0], x < 0),
+                            pause_replacement_stats[sentence][1],
                             x,
                         ),
                     )
@@ -726,7 +785,7 @@ def create_char_compression_time_mjff_data(
     char_compression_sentences = defaultdict(dict)
 
     # Get the updated compression times
-    corrected_compression_times = sentence_level_pause_correction_mjff(
+    corrected_compression_times = sentence_level_pause_correction(
         df, char_count_response_threshold=char_count_response_threshold
     )
 
@@ -799,12 +858,12 @@ def create_char_mjff_data(df: pd.DataFrame, char_count_response_threshold: int =
     char_sentences = defaultdict(dict)
 
     # Loop over subjects
-    for subj_idx in subjects:
+    for subject in subjects:
         # Not all subjects have typed all sentences hence we have to do it this way
-        for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
+        for sentence in df.loc[(df.participant_id == subject)].sentence_id.unique():
 
             # Locate df segment to extract
-            coordinates = (df.participant_id == subj_idx) & (df.sentence_id == sent_idx)
+            coordinates = (df.participant_id == subject) & (df.sentence_id == sentence)
 
             # "correct" the sentence by operating on user backspaces
             corrected_char_sentence, _ = backspace_corrector(
@@ -812,15 +871,15 @@ def create_char_mjff_data(df: pd.DataFrame, char_count_response_threshold: int =
             )
 
             # Note that we remove the last character to make the calculation correct.
-            char_sentences[subj_idx][sent_idx] = corrected_char_sentence
+            char_sentences[subject][sentence] = corrected_char_sentence
 
     # Combines the string
-    for subj_idx in subjects:
+    for subject in subjects:
         # Not all subjects have typed all sentences hence we have to do it this way
-        for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
+        for sentence in df.loc[(df.participant_id == subject)].sentence_id.unique():
             # Combines sentences to contiguous sequences (if not empty)
             # if not char_compression_sentences[subj_idx][sent_idx]:
-            char_sentences[subj_idx][sent_idx] = "".join(char_sentences[subj_idx][sent_idx])
+            char_sentences[subject][sentence] = "".join(char_sentences[subject][sentence])
 
     return char_sentences
 
@@ -1172,6 +1231,9 @@ def backspace_corrector(
             else:
                 # This _may_ introduce negative indices at the start of a sentence
                 # these are filtered out further down
+
+                # TODO: is this correct below?!
+
                 indication_cords.extend(range_extend(group[:-1]))  # This invokes the n-1 backspaces
 
     else:
@@ -1464,249 +1526,3 @@ def create_proper_spanish_letters(df: pd.DataFrame) -> pd.DataFrame:
                         df.drop(typed_chars_index[coordinates_to_remove], inplace=True)
 
     return df
-
-
-# Basline calculation stuff
-
-
-def create_mjff_baselines(df, df_meta, attempt=1, invokation_type=1):
-
-    # Select which attempt we are considering
-    df = select_attempt(df, df_meta, attempt=attempt)
-
-    # First calculate the IKI for each sentence
-    # TODO: does this need to be moved after the edit-distance?
-    df_iki = get_iki_baseline_df(df, df_meta, invokation_type=invokation_type)
-
-    # Second calculate the edit-distance
-    df, reference_sentences = create_MJFF_dataset("english", False, attempt, invokation_type)
-    df_edit = get_edit_distance_df(df, reference_sentences)
-
-    # Combine all measures
-    df = combine_iki_and_edit_distance(df_edit, df_iki)
-    assert not df.isnull().values.any()
-
-    return df
-
-
-def get_iki_baseline_df(df, df_meta, invokation_type):
-
-    assert len(df.attempt.unique()) == 1
-
-    # Corrected compression times (i.e. timestamp difference / delta)
-    # TODO: this needs to be updated to match the MRC format
-    corrected_compression_times = sentence_level_pause_correction_mjff(df)
-
-    data = []
-    # Loop over sentence IDs
-    for sentence in corrected_compression_times.keys():
-        # Loop over participant IDs
-        for participant in corrected_compression_times[sentence]:
-
-            if invokation_type == 1:
-                # Find the correction to the IKI
-
-                # Locate df segment to extract
-                coordinates = (df.participant_id == participant) & (df.sentence_id == sentence)
-
-                # Not all participants typed all sentences, this conditions check that
-                if len(df[coordinates]) != 0:
-
-                    # "correct" the sentence by operating on user backspaces
-                    _, removed_chars_indx = backspace_corrector(
-                        df.loc[coordinates, "key"].tolist(), invokation_type=invokation_type
-                    )
-
-                    L = len(corrected_compression_times[sentence][participant])
-                    assert set(removed_chars_indx).issubset(
-                        range(L)
-                    ), "Indices to remove: {} -- total length of timestamp vector: {}".format(removed_chars_indx, L)
-
-                    # Adjust actual compression times
-                    iki = corrected_compression_times[sentence][participant].drop(index=removed_chars_indx)
-
-            elif invokation_type == -1:
-                # Uncorrected IKI extracted here
-                iki = corrected_compression_times[sentence][participant][1:]
-
-            else:
-                # TODO: clean this up for other options
-                raise ValueError
-
-            # Append to list which we'll pass to a dataframe in subsequent cells
-            data.append(
-                (
-                    participant,
-                    sentence,
-                    int(df_meta.loc[(df_meta.participant_id == participant), "diagnosis"]),
-                    iki.mean(),
-                    iki.var(),
-                )
-            )
-
-    col_names = ["Patient_ID", "Sentence_ID", "Diagnosis", "Mean_IKI", "Var_IKI"]
-    df_iki = remap_English_MJFF_participant_ids(pd.DataFrame(data, columns=col_names))
-    df_iki.dropna(inplace=True)
-    df_iki.reset_index(drop=True, inplace=True)
-    assert not df_iki.isnull().values.any()
-
-    return df_iki
-
-
-def calculate_all_baseline_ROC_curves(df, test_size=0.25):
-    measures = ["edit_distance", "Mean_IKI", "Diagnosis"]
-    assert set(measures).issubset(df.columns)
-    features = ["Mean_IKI", ["edit_distance", "Mean_IKI"]]
-    # Store all results in a dict which will be passed to plotting
-    results = {"I": None, "II": None}
-    assert len(results) == len(features)
-    for i, j in zip(features, results.keys()):
-        # List of features
-        if isinstance(i, list):
-            # 100 here is the upper limit on the total number of participants
-            if df[i].shape[0] < 100:
-                X = np.hstack([np.vstack(df[j]) for j in i])
-            else:
-                X = df[i].to_numpy()
-        # Singular feature
-        else:
-            # 100 here is the upper limit on the total number of participants
-            if df[i].shape[0] < 100:
-                X = np.vstack(df[i])
-            else:
-                X = df[i].to_numpy().reshape(-1, 1)
-
-        # targets
-        y = df.Diagnosis.to_numpy()
-
-        # We use 25% of our data for test [sklearn default]
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
-
-        # Classify
-        # clf = SVC(class_weight="balanced", gamma="auto", probability=True)
-        clf = RandomForestClassifier(n_estimators=500, class_weight="balanced")
-        clf.fit(X_train, y_train)
-        y_probas = clf.predict_proba(X_test)
-
-        # Store
-        results[j] = (y_test, y_probas[:, 1])
-
-    return results
-
-
-def combine_iki_and_edit_distance(df_edit, df_iki):
-    df_edit["Mean_IKI"] = ""
-    for idx in df_edit.Patient_ID.unique():
-        for sent_idx in df_edit.loc[df_edit.Patient_ID == idx].Sentence_ID:
-            a = float(df_iki[(df_iki.Patient_ID == idx) & (df_iki.Sentence_ID == int(sent_idx))]["Mean_IKI"])
-            df_edit.loc[(df_edit.Patient_ID == idx) & (df_edit.Sentence_ID == sent_idx), "Mean_IKI"] = a
-
-    return df_edit
-
-
-def get_edit_distance_df(df, ref):
-    df["edit_distance"] = ""
-    for idx in df.Patient_ID.unique():
-        for sent_idx in df.loc[df.Patient_ID == idx].Sentence_ID:
-            a = df[(df.Patient_ID == idx) & (df.Sentence_ID == sent_idx)]["Preprocessed_typed_sentence"].values[0]
-            b = ref[ref.sentence_id == int(sent_idx)]["sentence_text"].values[0]
-            df.loc[(df.Patient_ID == idx) & (df.Sentence_ID == sent_idx), "edit_distance"] = ed(a, b)
-    return df
-
-
-def convert_df_to_subject_level(df: pd.DataFrame) -> pd.DataFrame:
-
-    subjects = sorted(df.Patient_ID.unique())
-    sentences = set(df.Sentence_ID)
-
-    missing_sentences = defaultdict(list)
-
-    # Check to see what entries are missing and where
-    for sub in subjects:
-        # Check if all sentences have been attempted
-        tmp_set = set(df[df.Patient_ID == sub].Sentence_ID)
-        if not sentences.issubset(tmp_set):
-            # Find intersection and insert np.nan att missing places
-            missing_sentences[sub].extend(sentences - tmp_set)
-
-    # Edit distance
-    df_subject = df.groupby(["Patient_ID", "Diagnosis"]).edit_distance.apply(list).reset_index()
-    # Mean IKI
-    tmp = df.groupby(["Patient_ID", "Diagnosis"]).Mean_IKI.apply(list).reset_index()
-    assert np.array_equal(df_subject.Patient_ID.values, tmp.Patient_ID.values)
-    assert np.array_equal(df_subject.Diagnosis.values, tmp.Diagnosis.values)
-    df_subject["Mean_IKI"] = tmp.Mean_IKI
-
-    # Append N mean and median values at missig locations
-    for sub in missing_sentences.keys():
-        N = len(missing_sentences[sub])
-        loc = df_subject.Patient_ID == sub
-        ed = int(median(df_subject[loc].edit_distance.tolist()[0]))
-        iki = mean(df_subject[loc].Mean_IKI.tolist()[0])
-        # Extend
-        df_subject[loc].edit_distance.tolist()[0].extend(N * [ed])
-        df_subject[loc].Mean_IKI.tolist()[0].extend(N * [iki])
-
-    df_subject.reset_index(inplace=True, drop=True)
-    return df_subject
-
-
-def test_different_splits_for_classification(Z):
-
-    X, y = Z
-    r = RandomForestClassifier(n_estimators=256, class_weight="balanced")
-    rs = ShuffleSplit(n_splits=100, test_size=0.25)
-
-    AUC = []
-
-    # Crossvalidate the scores on a number of different random splits of the data
-    for train_idx, test_idx in rs.split(X):
-        X_train, X_test = X[train_idx], X[test_idx]
-        y_train, y_test = y[train_idx], y[test_idx]
-        r.fit(X_train, y_train)
-        y_probas = r.predict_proba(X_test)
-        y_pred = r.predict(X_test)
-        # Confusion mat
-        tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
-        # Main calculations here
-        fpr, tpr, _ = roc_curve(y_test, y_probas[:, 1], pos_label=1)
-        # Calculate area under the ROC curve here
-        auc = np.trapz(tpr, fpr)
-        AUC.append(auc)
-
-    nauc = np.array(AUC)
-
-    return nauc.mean().round(3), nauc.std().round(3)
-
-
-def get_X_and_y_from_df(df):
-
-    measures = ["edit_distance", "Mean_IKI", "Diagnosis"]
-    assert set(measures).issubset(df.columns)
-    features = ["Mean_IKI", ["edit_distance", "Mean_IKI"]]
-
-    # Store all results in a dict which will be passed to plotting
-    sets = {"I": None, "II": None}
-    assert len(sets) == len(features)
-    for i, j in zip(features, sets.keys()):
-        # List of features
-        if isinstance(i, list):
-            # 100 here is the upper limit on the total number of participants
-            if df[i].shape[0] < 100:
-                X = np.hstack([np.vstack(df[j]) for j in i])
-            else:
-                X = df[i].to_numpy()
-        # Singular feature
-        else:
-            # 100 here is the upper limit on the total number of participants
-            if df[i].shape[0] < 100:
-                X = np.vstack(df[i])
-            else:
-                X = df[i].to_numpy().reshape(-1, 1)
-
-        # targets
-        y = df.Diagnosis.to_numpy()
-
-        sets[j] = (X, y)
-
-    return sets
