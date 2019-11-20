@@ -23,118 +23,6 @@ from haberrspd.preprocess import (
 )
 
 
-def fix_sentence_id_problem_mrc(df):
-    pd_subjects = [
-        11,
-        12,
-        13,
-        17,
-        18,
-        19,
-        20,
-        25,
-        27,
-        28,
-        29,
-        30,
-        31,
-        32,
-        33,
-        26,
-        34,
-        36,
-        37,
-        38,
-        40,
-        41,
-        42,
-        43,
-        45,
-        46,
-        47,
-        48,
-        49,
-        50,
-        51,
-        53,
-        54,
-        55,
-        56,
-        57,
-        58,
-        59,
-        60,
-        61,
-        62,
-        63,
-        64,
-        67,
-        68,
-        69,
-        75,
-        76,
-        77,
-        78,
-        79,
-        81,
-        82,
-        83,
-        84,
-        85,
-        86,
-        87,
-        88,
-        89,
-        90,
-        91,
-        92,
-        93,
-        95,
-        96,
-        97,
-        98,
-        100,
-        101,
-        103,
-        106,
-        107,
-        108,
-        109,
-        110,
-        111,
-        112,
-        114,
-        117,
-        118,
-        119,
-    ]
-
-    correct_sentence_id_mapping = dict(zip(list(range(1, 16)), [3, 1, 5, 2, 4, 11, 8, 9, 7, 6, 14, 13, 15, 10, 12]))
-    A = df.loc[(df.participant_id.isin(pd_subjects))]["sentence_id"].map(correct_sentence_id_mapping).tolist()
-    df.loc[(df.participant_id.isin(pd_subjects)), "sentence_id"] = A
-    return df
-
-
-def create_mjff_baselines(df, df_meta, attempt=1, invokation_type=1):
-
-    # Select which attempt we are considering
-    df = select_attempt(df, df_meta, attempt=attempt)
-
-    # First calculate the IKI for each sentence
-    # TODO: does this need to be moved after the edit-distance?
-    df_iki = calculate_iki_and_ed_baseline(df, df_meta, invokation_type=invokation_type)
-
-    # Second calculate the edit-distance
-    df, reference_sentences = create_MJFF_dataset("english", False, attempt, invokation_type)
-    df_edit = get_edit_distance_df(df, reference_sentences)
-
-    # Combine all measures
-    df = combine_iki_and_edit_distance(df_edit, df_iki)
-    assert not df.isnull().values.any()
-
-    return df
-
-
 def calculate_iki_and_ed_baseline(
     df: pd.DataFrame, drop_shift=False, attempt=1, df_meta: pd.DataFrame = None, invokation_type: int = -1
 ):
@@ -212,18 +100,17 @@ def calculate_iki_and_ed_baseline(
                     # Adjust actual inter-key-intervals
                     iki = corrected_inter_key_intervals[sentence][participant].drop(index=removed_chars_indx)
                     # Calculate edit distance
-                    ed = edit_distance(
-                        "".join(corrected_character_sentence),
-                        ref[ref.sentence_id == sentence]["sentence_text"].values[0],
-                    )
+                    reference_sentence = select_reference_sentence(sentence, participant, ref)
+                    ed = edit_distance("".join(corrected_character_sentence), reference_sentence)
 
             elif invokation_type == -1:
                 # Uncorrected IKI extracted here
                 iki = corrected_inter_key_intervals[sentence][participant][1:]
                 # Calculate edit distance
+                reference_sentence = select_reference_sentence(sentence, participant, ref)
                 ed = edit_distance(
                     "".join(df[(df.participant_id == participant) & (df.sentence_id == sentence)].key),
-                    ref[ref.sentence_id == sentence]["sentence_text"].values[0],
+                    reference_sentence,
                 )
             else:
                 # TODO: clean this up for other options
@@ -251,6 +138,21 @@ def calculate_iki_and_ed_baseline(
     assert not results.isnull().values.any()
 
     return results
+
+
+def select_reference_sentence(sentence, participant, reference_df):
+    if sentence > 20:
+        # An MJFF sentence
+        return reference_df[reference_df.MJFF_IDS == sentence]["REFERENCE_TEXT"].values[0]
+    else:
+        # An MRC sentence
+        if participant < 1000:
+            # A patient
+            column = "MRC_PATIENT_DATA_IDS"
+        else:
+            # A control
+            column = "MRC_CONTROL_DATA_IDS"
+        return reference_df[reference_df[column] == sentence]["REFERENCE_TEXT"].values[0]
 
 
 def calculate_all_baseline_ROC_curves(df, test_size=0.25):
@@ -294,26 +196,6 @@ def calculate_all_baseline_ROC_curves(df, test_size=0.25):
     return results
 
 
-def combine_iki_and_edit_distance(df_edit, df_iki):
-    df_edit["Mean_IKI"] = ""
-    for idx in df_edit.Patient_ID.unique():
-        for sent_idx in df_edit.loc[df_edit.Patient_ID == idx].Sentence_ID:
-            a = float(df_iki[(df_iki.Patient_ID == idx) & (df_iki.Sentence_ID == int(sent_idx))]["Mean_IKI"])
-            df_edit.loc[(df_edit.Patient_ID == idx) & (df_edit.Sentence_ID == sent_idx), "Mean_IKI"] = a
-
-    return df_edit
-
-
-def get_edit_distance_df(df, ref):
-    df["edit_distance"] = ""
-    for idx in df.Patient_ID.unique():
-        for sent_idx in df.loc[df.Patient_ID == idx].Sentence_ID:
-            a = df[(df.Patient_ID == idx) & (df.Sentence_ID == sent_idx)]["Preprocessed_typed_sentence"].values[0]
-            b = ref[ref.sentence_id == int(sent_idx)]["sentence_text"].values[0]
-            df.loc[(df.Patient_ID == idx) & (df.Sentence_ID == sent_idx), "edit_distance"] = edit_distance(a, b)
-    return df
-
-
 def convert_df_to_subject_level(df: pd.DataFrame) -> pd.DataFrame:
 
     subjects = sorted(df.Patient_ID.unique())
@@ -330,7 +212,7 @@ def convert_df_to_subject_level(df: pd.DataFrame) -> pd.DataFrame:
             missing_sentences[sub].extend(sentences - tmp_set)
 
     # Edit distance
-    df_subject = df.groupby(["Patient_ID", "Diagnosis"]).edit_distance.apply(list).reset_index()
+    df_subject = df.groupby(["Patient_ID", "Diagnosis"]).Edit_Distance.apply(list).reset_index()
     # Mean IKI
     tmp = df.groupby(["Patient_ID", "Diagnosis"]).Mean_IKI.apply(list).reset_index()
     assert np.array_equal(df_subject.Patient_ID.values, tmp.Patient_ID.values)
@@ -341,10 +223,10 @@ def convert_df_to_subject_level(df: pd.DataFrame) -> pd.DataFrame:
     for sub in missing_sentences.keys():
         N = len(missing_sentences[sub])
         loc = df_subject.Patient_ID == sub
-        ed = int(median(df_subject[loc].edit_distance.tolist()[0]))
+        ed = int(median(df_subject[loc].Edit_Distance.tolist()[0]))
         iki = mean(df_subject[loc].Mean_IKI.tolist()[0])
         # Extend
-        df_subject[loc].edit_distance.tolist()[0].extend(N * [ed])
+        df_subject[loc].Edit_Distance.tolist()[0].extend(N * [ed])
         df_subject[loc].Mean_IKI.tolist()[0].extend(N * [iki])
 
     df_subject.reset_index(inplace=True, drop=True)
@@ -381,28 +263,26 @@ def test_different_splits_for_classification(Z):
 
 def get_X_and_y_from_df(df):
 
-    measures = ["edit_distance", "Mean_IKI", "Diagnosis"]
-    assert set(measures).issubset(df.columns)
-    features = ["Mean_IKI", ["edit_distance", "Mean_IKI"]]
+    measures = ["Edit_Distance", "Mean_IKI", "Diagnosis"]
+    # assert set(measures).issubset(df.columns)
+    features = ["Mean_IKI", ["Edit_Distance", "Mean_IKI"]]
 
     # Store all results in a dict which will be passed to plotting
     sets = {"I": None, "II": None}
-    assert len(sets) == len(features)
+    # assert len(sets) == len(features)
     for i, j in zip(features, sets.keys()):
+
         # List of features
         if isinstance(i, list):
-            # 100 here is the upper limit on the total number of participants
-            if df[i].shape[0] < 100:
-                X = np.hstack([np.vstack(df[j]) for j in i])
-            else:
-                X = df[i].to_numpy()
+            assert len(i) == 2
+            X = []
+            for k in range(df.shape[0]):
+                X.append(df.loc[k, i[0]] + df.loc[k, i[1]])
+            X = np.vstack(X)
+
         # Singular feature
         else:
-            # 100 here is the upper limit on the total number of participants
-            if df[i].shape[0] < 100:
-                X = np.vstack(df[i])
-            else:
-                X = df[i].to_numpy().reshape(-1, 1)
+            X = np.vstack(df[i])
 
         # targets
         y = df.Diagnosis.to_numpy()
@@ -414,28 +294,27 @@ def get_X_and_y_from_df(df):
 
 def reference_sentences(which_dataset):
     assert which_dataset in ["mrc", "mjff"]
-    sentences = np.array(
-        [
-            "However, religions other than Islam, use a different pronunciation for Allah, although the spelling is the same",
-            "He is buried in Egypt, Aswan at the Mausoleum of Aga Khan",
-            "Books include Penguin Island, a satire on the Dreyfus affair",
-            "The w-shaped glyph above the second consonant that it geminates, is in fact the beginning of a small letter",
-            "The Franks alliance was important exactly because of their renown hostility towards the Byzantine",
-            "As of 2004, nearly 50% of Americans who were enrolled in employer health insurance plans were covered for acupuncture treatments",
-            "Lincoln's coffin would be encased in concrete several feet thick, and surrounded by a cage, and buried beneath a rock slab",
-            "Generally considered a part of Central Asia, it is sometimes ascribed to a regional bloc in either the Middle East or South Asia",
-            "Although early behavioural or cognitive intervention can help children gain self-care, social, and communication skills, their is no known cure",
-            "The Korean men have not fared so well in Olympic competition but still produce good results",
-            "The novel explores the relationship between Patroclus and Achilles from boyhood to the fateful events of the Iliad",
-            "Split-finger aiming requires the archer to place the index finger above the nocked arrow, while the middle and ring fingers are both placed below",
-            "They fought a thirty years war on the side of the Lamtuna Arabized Berbers who claimed Himyarite ancestry from the early Islamic invasions ",
-            "However, there is no evidence that those tattoos were used as acupuncture points or if they were just decorative in nature",
-            "Over three million cattle are residents of the province at one time or another, and Alberta beef has a healthy worldwide market",
-        ],
-        dtype=object,
-    )
 
-    identifer = {"mrc": np.arange(1, 16).reshape(-1, 1), "mjff": np.arange(55, 70).reshape(-1, 1)}
-    data = np.hstack((identifer[which_dataset], sentences.reshape(-1, 1)))
-    return pd.DataFrame(data=data, columns=["sentence_id", "sentence_text"])
+    if which_dataset == "mjff":
+        fields = ["MJFF_IDS", "REFERENCE_TEXT"]
+    else:
+        fields = ["MRC_PATIENT_DATA_IDS", "MRC_CONTROL_DATA_IDS", "REFERENCE_TEXT"]
 
+    return pd.read_csv("../data/sentence_IDs.csv", usecols=fields)
+
+
+def remap_sentence_ids_for_control_subjects_mrc(df):
+    # PD subjects have ID numbers which are all less than 1000
+    control_subjects = [i for i in df.participant_id.unique() if i < 1000]
+    correct_sentence_id_mapping = dict(zip(list(range(1, 16)), [3, 1, 5, 2, 4, 11, 8, 9, 7, 6, 14, 13, 15, 10, 12]))
+    A = df.loc[(df.participant_id.isin(control_subjects))]["sentence_id"].map(correct_sentence_id_mapping).tolist()
+    df.loc[(df.participant_id.isin(control_subjects)), "sentence_id"] = A
+    return df
+
+
+def remap_sentence_ids_for_pd_subjects_mrc(df):
+    pd_subjects = [i for i in df.participant_id.unique() if i > 1000]
+    correct_sentence_id_mapping = dict(zip(list(range(1, 16)), [3, 1, 5, 2, 4, 11, 8, 9, 7, 6, 14, 13, 15, 10, 12]))
+    A = df.loc[(df.participant_id.isin(pd_subjects))]["sentence_id"].map(correct_sentence_id_mapping).tolist()
+    df.loc[(df.participant_id.isin(pd_subjects)), "sentence_id"] = A
+    return df
