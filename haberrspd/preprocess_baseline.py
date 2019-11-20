@@ -24,21 +24,25 @@ from haberrspd.preprocess import (
 
 
 def calculate_iki_and_ed_baseline(
-    df: pd.DataFrame, drop_shift=False, attempt=1, df_meta: pd.DataFrame = None, invokation_type: int = -1
+    df: pd.DataFrame, df_meta: pd.DataFrame = None, drop_shift=False, attempt=1, invokation_type: int = -1
 ):
 
-    if df_meta:
+    if df_meta is not None:
         # MJFF
-
-        assert len(df.attempt.unique()) == 1
+        print("MJFF")
+        which_dataset = "mjff"
         backspace_char = "backspace"
-        ref = reference_sentences("mjff")
+        ref = reference_sentences(which_dataset)
         # Select which attempt we are considering
         df = select_attempt(df, df_meta, attempt=attempt)
+        assert len(df.attempt.unique()) == 1
+        data_root = Path("../data/MJFF/")
+        full_path = data_root / "sentence_level_pause_correct_mjff.pkl"
 
     else:
         # MRC
-
+        print("MRC")
+        which_dataset = "mrc"
         # Get all keyups and drop them in place
         idxs_keyup = df.index[(df.type == "keyup")]
         # In-place dropping of these rows
@@ -58,13 +62,14 @@ def calculate_iki_and_ed_baseline(
             print("\n Number of shift-rows dropped: %i" % len(idxs_shift))
 
         backspace_char = "α"
-        ref = reference_sentences("mrc")
+        ref = reference_sentences(which_dataset)
         data_root = Path("../data/MRC/")
-        pkl_file = open(data_root / "sentence_level_pause_correct_mrc.pkl", "rb")
+        full_path = data_root / "sentence_level_pause_correct_mrc.pkl"
 
-        # TODO: special functions to apply to deal with shift and backspace for MRC
+    # TODO: special functions to apply to deal with shift and backspace for MRC
 
-    if os.path.exists(data_root / "sentence_level_pause_correct_mrc.pkl"):
+    if os.path.exists(full_path):
+        pkl_file = open(full_path, "rb")
         corrected_inter_key_intervals = pickle.load(pkl_file)
     else:
         print("\n Pickled file wasn't found.")
@@ -100,14 +105,14 @@ def calculate_iki_and_ed_baseline(
                     # Adjust actual inter-key-intervals
                     iki = corrected_inter_key_intervals[sentence][participant].drop(index=removed_chars_indx)
                     # Calculate edit distance
-                    reference_sentence = select_reference_sentence(sentence, participant, ref)
+                    reference_sentence = select_reference_sentence(which_dataset, sentence, participant, ref)
                     ed = edit_distance("".join(corrected_character_sentence), reference_sentence)
 
             elif invokation_type == -1:
                 # Uncorrected IKI extracted here
                 iki = corrected_inter_key_intervals[sentence][participant][1:]
                 # Calculate edit distance
-                reference_sentence = select_reference_sentence(sentence, participant, ref)
+                reference_sentence = select_reference_sentence(which_dataset, sentence, participant, ref)
                 ed = edit_distance(
                     "".join(df[(df.participant_id == participant) & (df.sentence_id == sentence)].key),
                     reference_sentence,
@@ -117,7 +122,7 @@ def calculate_iki_and_ed_baseline(
                 raise ValueError
 
             # Append to list which we'll pass to a dataframe in subsequent cells
-            if df_meta:
+            if df_meta is not None:
                 # MJFF
                 diagnosis = int(df_meta.loc[(df_meta.participant_id == participant), "diagnosis"])
             else:
@@ -128,7 +133,7 @@ def calculate_iki_and_ed_baseline(
             data.append((participant, sentence, diagnosis, iki.mean(), iki.var(), ed))
 
     col_names = ["Patient_ID", "Sentence_ID", "Diagnosis", "Mean_IKI", "Var_IKI", "Edit_Distance"]
-    if df_meta:
+    if df_meta is not None:
         results = remap_English_MJFF_participant_ids(pd.DataFrame(data, columns=col_names))
     else:
         results = pd.DataFrame(data, columns=col_names)
@@ -140,10 +145,10 @@ def calculate_iki_and_ed_baseline(
     return results
 
 
-def select_reference_sentence(sentence, participant, reference_df):
-    if sentence > 20:
+def select_reference_sentence(which_dataset, sentence, participant, reference_df):
+    if which_dataset == "mjff":
         # An MJFF sentence
-        return reference_df[reference_df.MJFF_IDS == sentence]["REFERENCE_TEXT"].values[0]
+        return reference_df[reference_df["MJFF_IDS"] == sentence]["REFERENCE_TEXT"].values[0]
     else:
         # An MRC sentence
         if participant < 1000:
