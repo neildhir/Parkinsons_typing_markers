@@ -32,26 +32,6 @@ nice_fonts = {
 mpl.rcParams.update(nice_fonts)
 
 
-def get_flair_labels_and_label_probabilities():
-    DATA_ROOT_FASTTEXT = Path("../data/MJFF/fasttext/")  # Note the relative path
-    # Get test data
-    text = read_csv(DATA_ROOT_FASTTEXT / "test.csv", sep="\t", header=None)
-    # Load trained model
-    classifier = TextClassifier.load_from_file(DATA_ROOT_FASTTEXT / "best-model.pt")
-    predicted_labels = []  # Predicted PD/HC under model
-    predicted_labels_probs = []  # Predicted PD/HC probability under model
-    for sent in text[1]:
-        # Loop over each example
-        sentence = Sentence(sent)
-        classifier.predict(sentence)
-        for label in sentence.labels:
-            # Get value and score of label
-            predicted_labels.extend(label.value)
-            predicted_labels_probs.append(label.score)
-
-    return predicted_labels, predicted_labels_probs
-
-
 def plot_superimposed_roc_curves(data: dict, filename=None) -> None:
 
     if filename:
@@ -62,8 +42,8 @@ def plot_superimposed_roc_curves(data: dict, filename=None) -> None:
         assert all([isinstance(x, dict) for x in data])
         # Combine them
         if len(data) == 2:
-            assert set(["I", "II"]).issubset(data[0].keys())
-            assert set(["I", "II"]).issubset(data[1].keys())
+            assert set(["I", "II"]).issubset(data[0].keys()), data[0].keys()
+            assert set(["I", "II"]).issubset(data[1].keys()), data[1].keys()
             data[1]["III"] = data[1].pop("I")
             data[1]["IV"] = data[1].pop("II")
             data = {**data[0], **data[1]}

@@ -2,6 +2,9 @@
 
 from collections import Counter, defaultdict
 from statistics import mean, median
+from pathlib import Path
+import os.path
+import pickle
 
 import numpy as np
 import pandas as pd
@@ -18,6 +21,98 @@ from haberrspd.preprocess import (
     select_attempt,
     sentence_level_pause_correction,
 )
+
+
+def fix_sentence_id_problem_mrc(df):
+    pd_subjects = [
+        11,
+        12,
+        13,
+        17,
+        18,
+        19,
+        20,
+        25,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        26,
+        34,
+        36,
+        37,
+        38,
+        40,
+        41,
+        42,
+        43,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        67,
+        68,
+        69,
+        75,
+        76,
+        77,
+        78,
+        79,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        95,
+        96,
+        97,
+        98,
+        100,
+        101,
+        103,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        114,
+        117,
+        118,
+        119,
+    ]
+
+    correct_sentence_id_mapping = dict(zip(list(range(1, 16)), [3, 1, 5, 2, 4, 11, 8, 9, 7, 6, 14, 13, 15, 10, 12]))
+    A = df.loc[(df.participant_id.isin(pd_subjects))]["sentence_id"].map(correct_sentence_id_mapping).tolist()
+    df.loc[(df.participant_id.isin(pd_subjects)), "sentence_id"] = A
+    return df
 
 
 def create_mjff_baselines(df, df_meta, attempt=1, invokation_type=1):
@@ -40,13 +135,19 @@ def create_mjff_baselines(df, df_meta, attempt=1, invokation_type=1):
     return df
 
 
-def calculate_iki_and_ed_baseline(df: pd.DataFrame, df_meta: pd.DataFrame = None, invokation_type: int = -1):
+def calculate_iki_and_ed_baseline(
+    df: pd.DataFrame, drop_shift=False, attempt=1, df_meta: pd.DataFrame = None, invokation_type: int = -1
+):
 
     if df_meta:
         # MJFF
 
         assert len(df.attempt.unique()) == 1
         backspace_char = "backspace"
+        ref = reference_sentences("mjff")
+        # Select which attempt we are considering
+        df = select_attempt(df, df_meta, attempt=attempt)
+
     else:
         # MRC
 
@@ -59,12 +160,28 @@ def calculate_iki_and_ed_baseline(df: pd.DataFrame, df_meta: pd.DataFrame = None
         # Make sure that we've dropped the keyups in the MRC dataframe
         assert "keyup" not in df.type
 
+        # Remove shift characters or not
+        if drop_shift:
+            # Shift indices
+            idxs_shift = df.index[(df.key == "β")]
+            # In-place dropping of these rows
+            df.drop(df.index[idxs_shift], inplace=True)
+            df.reset_index(drop=True, inplace=True)
+            print("\n Number of shift-rows dropped: %i" % len(idxs_shift))
+
         backspace_char = "α"
         ref = reference_sentences("mrc")
+        data_root = Path("../data/MRC/")
+        pkl_file = open(data_root / "sentence_level_pause_correct_mrc.pkl", "rb")
+
         # TODO: special functions to apply to deal with shift and backspace for MRC
 
-    # Corrected inter-key-intervals (i.e. timestamp difference / delta)
-    corrected_inter_key_intervals = sentence_level_pause_correction(df)
+    if os.path.exists(data_root / "sentence_level_pause_correct_mrc.pkl"):
+        corrected_inter_key_intervals = pickle.load(pkl_file)
+    else:
+        print("\n Pickled file wasn't found.")
+        # Corrected inter-key-intervals (i.e. timestamp difference / delta)
+        corrected_inter_key_intervals = sentence_level_pause_correction(df)
 
     data = []
     # Loop over sentence IDs
@@ -92,19 +209,22 @@ def calculate_iki_and_ed_baseline(df: pd.DataFrame, df_meta: pd.DataFrame = None
                     assert set(removed_chars_indx).issubset(
                         range(L)
                     ), "Indices to remove: {} -- total length of timestamp vector: {}".format(removed_chars_indx, L)
-
                     # Adjust actual inter-key-intervals
                     iki = corrected_inter_key_intervals[sentence][participant].drop(index=removed_chars_indx)
-
                     # Calculate edit distance
                     ed = edit_distance(
-                        "".join(corrected_character_sentence), ref[ref.sentence_id == int(sentence)].sentence_text[0]
+                        "".join(corrected_character_sentence),
+                        ref[ref.sentence_id == sentence]["sentence_text"].values[0],
                     )
 
             elif invokation_type == -1:
                 # Uncorrected IKI extracted here
                 iki = corrected_inter_key_intervals[sentence][participant][1:]
-
+                # Calculate edit distance
+                ed = edit_distance(
+                    "".join(df[(df.participant_id == participant) & (df.sentence_id == sentence)].key),
+                    ref[ref.sentence_id == sentence]["sentence_text"].values[0],
+                )
             else:
                 # TODO: clean this up for other options
                 raise ValueError
@@ -122,21 +242,21 @@ def calculate_iki_and_ed_baseline(df: pd.DataFrame, df_meta: pd.DataFrame = None
 
     col_names = ["Patient_ID", "Sentence_ID", "Diagnosis", "Mean_IKI", "Var_IKI", "Edit_Distance"]
     if df_meta:
-        df_iki = remap_English_MJFF_participant_ids(pd.DataFrame(data, columns=col_names))
+        results = remap_English_MJFF_participant_ids(pd.DataFrame(data, columns=col_names))
     else:
-        df_iki = pd.DataFrame(data, columns=col_names)
+        results = pd.DataFrame(data, columns=col_names)
 
-    df_iki.dropna(inplace=True)
-    df_iki.reset_index(drop=True, inplace=True)
-    assert not df_iki.isnull().values.any()
+    results.dropna(inplace=True)
+    results.reset_index(drop=True, inplace=True)
+    assert not results.isnull().values.any()
 
-    return df_iki
+    return results
 
 
 def calculate_all_baseline_ROC_curves(df, test_size=0.25):
-    measures = ["edit_distance", "Mean_IKI", "Diagnosis"]
+    measures = ["Edit_Distance", "Mean_IKI", "Diagnosis"]
     assert set(measures).issubset(df.columns)
-    features = ["Mean_IKI", ["edit_distance", "Mean_IKI"]]
+    features = ["Mean_IKI", ["Edit_Distance", "Mean_IKI"]]
     # Store all results in a dict which will be passed to plotting
     results = {"I": None, "II": None}
     assert len(results) == len(features)
