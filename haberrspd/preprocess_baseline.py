@@ -305,7 +305,7 @@ def reference_sentences(which_dataset):
     else:
         fields = ["MRC_PATIENT_DATA_IDS", "MRC_CONTROL_DATA_IDS", "REFERENCE_TEXT"]
 
-    return pd.read_csv("../data/sentence_IDs.csv", usecols=fields)
+    return pd.read_csv("../aux/sentence_IDs.csv", usecols=fields)
 
 
 def remap_sentence_ids_for_control_subjects_mrc(df):

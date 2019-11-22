@@ -18,6 +18,43 @@ from haberrspd.__init_paths import data_root
 # ------------------------------------------ MRC------------------------------------------ #
 
 
+def remove_superfluous_reponse_id_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """This function only really needs to be used once. It was used [21/11/19] to remove duplicate rows
+    for certain (subject, sentence) indices where the data-storing process had become corrupted, causing
+    multiple versions of the same sentence to be stored under the same aforementioned index.
+
+    This function removes the duplicates entries, and ensures that only one response_id is recorded per
+    typed sentence.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Raw pandas dataframe (file loaded from "CombinedTypingDataSept27.csv")
+
+    Returns
+    -------
+    pd.DataFrame
+        Dataframe without any duplicates per row.
+    """
+    indices_to_remove = []
+    for subj_idx in df.participant_id.unique():
+        # Not all subjects have typed all sentences hence we have to do it this way
+        for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
+            # Locate df segment to extract
+            coordinates = (df.participant_id == subj_idx) & (df.sentence_id == sent_idx)
+            # In practise each sentence should have only _one_ response_id,
+            # more than one is evidence of a corrupted data-reading process.
+            re_ID = df.loc[coordinates].response_id.unique().tolist()
+            if len(re_ID) != 1:
+                # Response IDs to remove, get indices of these
+                indices_to_remove.extend(df.loc[coordinates & (df.response_id.isin(re_ID[1:]))].index)
+
+    # Once we have located all superfluous response IDs we drop them in-place and reset the index
+    df.drop(df.index[indices_to_remove], inplace=True)
+    # Reset index so that we can sort it properly in the next step
+    df.reset_index(drop=True, inplace=True)
+
+
 class processMRC:
     """
     Governing class with which the user will interface.
