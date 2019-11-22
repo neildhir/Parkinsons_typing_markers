@@ -27,18 +27,18 @@ from haberrspd.charCNN.models_tf import char_cnn_model_talos
 # --- PARSE ADDITIONAL USER SETTINGS
 
 parser = argparse.ArgumentParser(description="CNN text classifier.")
-parser.add_argument("which_dataset", type=str, default="mjff", help="Select which dataset [MRC or MJFF] to analyse.")
-parser.add_argument(
-    "-which_information",
-    type=str,
-    default="char_time",
-    help="Tells the model which type of data to use for the optimisation.",
-)
+parser.add_argument("-which_dataset", type=str, default="mjff", help="Select which dataset [MRC, MJFF] to analyse.")
 parser.add_argument(
     "-dataset",
     type=str,
     default="EnglishData-preprocessed.csv",
     help="Dataset to use for hyperparam optimisation [default is EnglishData-preprocessed.csv i.e. time + char information.]",
+)
+parser.add_argument(
+    "-which_information",
+    type=str,
+    default="char_time",
+    help="Tells the model which type of data to use for the optimisation [char, char_time, char_time_space].",
 )
 parser.add_argument(
     "-round_limit",

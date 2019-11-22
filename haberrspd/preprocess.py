@@ -19,7 +19,8 @@ from haberrspd.__init_paths import data_root
 
 
 def remove_superfluous_reponse_id_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """This function only really needs to be used once. It was used [21/11/19] to remove duplicate rows
+    """
+    This function only really needs to be used once. It was used [21/11/19] to remove duplicate rows
     for certain (subject, sentence) indices where the data-storing process had become corrupted, causing
     multiple versions of the same sentence to be stored under the same aforementioned index.
 
@@ -67,19 +68,21 @@ class processMRC:
     def __init__(self):
         print("\tMedical Research Council funded PD copy-typing data.\n")
 
+    # TODO: need to invoke the long_format keyword at some point
     def __call__(self, long_format=True) -> pd.DataFrame:
 
         # Location on Neil's big machine in Sweden
         data_root = Path("../data/MRC/")
 
-        # Read data
-        raw = pd.read_csv(data_root / "CombinedTypingDataSept27.csv", header=0)
+        # Read data [ensure that this is the newest version available]
+        raw = pd.read_csv(data_root / "CombinedTypingDataNov21-duplicateeventsremoved.csv", header=0)
 
         # Clean
         df = clean_mrc(raw)
 
         # Preprocess: create sentences to be used in NLP model
-        sentences, _ = create_sentences_from_raw_typing_mrc(df)
+        # TODO: this function does currently [22/11/2019] not work, use the IKI version instead
+        sentences, _ = make_char_compression_sentences_from_raw_typing_mrc(df)
 
         # Convert into NLP-readable format
         df = create_dataframe_from_processed_data(sentences, raw)
@@ -157,7 +160,7 @@ def clean_mrc(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def create_sentences_from_raw_typing_mrc(
+def make_char_compression_sentences_from_raw_typing_mrc(
     df: pd.DataFrame, make_long_format=True, time_redux_fact=10
 ) -> Tuple[dict, list]:
 
@@ -805,7 +808,7 @@ def sentence_level_pause_correction(
     return corrected_timestamp_diff
 
 
-def create_char_compression_time_mjff_data(
+def create_char_iki_extended_mjff_data(
     df: pd.DataFrame, char_count_response_threshold=40, time_redux_fact=10
 ) -> Tuple[dict, list]:
 
@@ -1411,7 +1414,7 @@ def create_MJFF_dataset(
         # This option includes information on: character and timing
 
         # Creates long sequences with characters repeated for IKI number of steps
-        out = create_char_compression_time_mjff_data(df)
+        out = create_char_iki_extended_mjff_data(df)
     else:
         # This option _only_ includes the characters.
         out = create_char_mjff_data(df, invokation_type=invokation_type)
@@ -1425,97 +1428,6 @@ def create_MJFF_dataset(
 
     # Return the empirical data and the reference sentences for downstream tasks
     return df, reference_sentences
-
-
-def create_NLP_datasets_from_MJFF_English_data(use_mechanical_turk=False):
-    """
-    End-to-end creation of raw data to NLP readable train and test sets.
-
-    Parameters
-    ----------
-    use_mechanical_turk: bool
-        To add mechanical turk data or not to the training set
-
-    Returns
-    -------
-    pandas dataframe
-        Processed dataframe
-    """
-
-    if socket.gethostname() == "pax":
-        # Monster machine
-        data_root = "../data/MJFF/"  # My local path
-        data_root = Path(data_root)
-    else:
-        # Laptop
-        data_root = "/home/nd/data/liverpool/MJFF"  # My local path
-        data_root = Path(data_root)
-
-    # Raw data
-    df = pd.read_csv(data_root / "EnglishData.csv")
-    df_meta = pd.read_csv(data_root / "EnglishParticipantKey.csv")
-
-    if use_mechanical_turk:
-        df_mt = pd.read_csv(data_root / "MechanicalTurkCombinedEnglishData.csv")
-        df_meta_mt = pd.read_csv(data_root / "MechanicalTurkEnglishParticipantKey.csv")
-        # Drop columns from main data to facilitate concatenation
-        df.drop(columns=["parameters_workerId", "parameters_consent"], inplace=True)
-        assert all(df.columns == df_mt.columns)
-        # Combine
-        df = pd.concat([df, df_mt]).reset_index(drop=True)
-        df_meta = pd.concat([df_meta, df_meta_mt]).reset_index(drop=True)
-
-    # Extracts all the characters per typed sentence, per subject
-    out, numerical_sentence_ids, reference_sentences = create_mjff_training_data(df)
-
-    # Make proper sentences from characters, where default is to invoke backspaces
-    out = combine_characters_to_form_words_at_space(out, numerical_sentence_ids)
-
-    # Return the empirical data and the reference sentences for downstream tasks
-    return (
-        create_dataframe_from_processed_data(out, numerical_sentence_ids, df_meta).reset_index(drop=True),
-        reference_sentences.loc[:, ["sentence_id", "sentence_text"]],
-    )
-
-
-def create_NLP_datasets_from_MJFF_Spanish_data() -> pd.DataFrame:
-    """
-    Creatae NLP-readable dataset from Spanish MJFF data.
-    """
-
-    # Monster machine
-    data_root = "../data/MJFF/"  # Relative path
-    data_root = Path(data_root)
-
-    # Meta
-    df_meta = pd.read_csv(data_root / "SpanishParticipantKey.csv")
-
-    # Text
-    df = pd.read_csv(data_root / "SpanishData.csv")
-
-    # There is no label for subject 167, so we remove her here.
-    df = df.query("participant_id != 167")
-
-    # Extracts all the characters per typed sentence, per subject
-    out = create_mjff_training_data(df)
-
-    # No one likes an empty list so we remove them here
-    for subject in out.keys():
-        # Remove empty lists that may have snuck in
-        out[subject] = [x for x in out[subject] if x != []]
-
-    # Make proper sentences from characters, where default is to invoke backspaces
-    out = combine_characters_to_form_words_at_space(out)
-
-    # No one likes an empty list so we remove them here
-    for subject in out.keys():
-        # Remove empty lists that may have snuck in
-        out[subject] = [x for x in out[subject] if x != []]
-
-    out = create_dataframe_from_processed_data(out, df_meta).reset_index(drop=True)
-    # Because characters are typed sequentially special Spanish characters
-    # are not invoked in the dataset. We fix this here.
-    return create_proper_spanish_letters(out)
 
 
 def create_proper_spanish_letters(df: pd.DataFrame) -> pd.DataFrame:
