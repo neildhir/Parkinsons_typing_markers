@@ -43,10 +43,8 @@ def calculate_iki_and_ed_baseline(
         # MRC
         print("MRC")
         which_dataset = "mrc"
-        # Get all keyups and drop them in place
-        idxs_keyup = df.index[(df.type == "keyup")]
-        # In-place dropping of these rows
-        df.drop(df.index[idxs_keyup], inplace=True)
+        # In-place dropping of keyup rows
+        df.drop(df.index[(df.type == "keyup")], inplace=True)
         # Reset index so that we can sort it properly in the next step
         df.reset_index(drop=True, inplace=True)
         # Make sure that we've dropped the keyups in the MRC dataframe
@@ -54,10 +52,10 @@ def calculate_iki_and_ed_baseline(
 
         # Remove shift characters or not
         if drop_shift:
-            # Shift indices
+            # Drop shift indices
             idxs_shift = df.index[(df.key == "β")]
             # In-place dropping of these rows
-            df.drop(df.index[idxs_shift], inplace=True)
+            df.drop(df.index[(df.key == "β")], inplace=True)
             df.reset_index(drop=True, inplace=True)
             print("\n Number of shift-rows dropped: %i" % len(idxs_shift))
 

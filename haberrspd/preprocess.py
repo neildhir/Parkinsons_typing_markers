@@ -805,12 +805,32 @@ def sentence_level_pause_correction(
                 )
             )
 
-    return corrected_timestamp_diff
+    return corrected_timestamp_diff, pause_replacement_stats
 
 
 def create_char_iki_extended_mjff_data(
     df: pd.DataFrame, char_count_response_threshold=40, time_redux_fact=10
 ) -> Tuple[dict, list]:
+    """
+    This function does the following given e.g. typed list ['a','b','c'] with corresponding
+    timestamp values [3,7,10] then it creates the following "long-format" lists:
+    L = [NaN, 'bbbb', 'ccc'] and then merges L[1:] as so ['bbbbccc']. This is what we call in the paper a
+    'long format' sentence.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        [description]
+    char_count_response_threshold : int, optional
+        [description], by default 40
+    time_redux_fact : int, optional
+        [description], by default 10
+
+    Returns
+    -------
+    Tuple[dict, list]
+        [description]
+    """
 
     assert set(["participant_id", "key", "timestamp", "sentence_id"]).issubset(df.columns)
     # Filter out responses where the number of characters per typed
@@ -1145,7 +1165,6 @@ def combine_characters_to_form_words_at_space(typed_keys: dict, sent_ids: list, 
     ----------
     typed_keys : dict
         Dictionary containing the empirical sentences typed by subjects
-
     correct : int
         Issues which type of correction we wish to make before we pass anything convert anything into
         an embedding
