@@ -705,10 +705,11 @@ def dataset_summary_statistics(df: pd.DataFrame):
 def sentence_level_pause_correction(
     df: pd.DataFrame,
     char_count_response_threshold: int = 40,
-    cut_off_percentile: float = 0.99,
+    cut_off_percentile: int = 99,
     correction_model: str = "gengamma",
 ) -> Tuple[dict, list]:
-    """Function is used to correct the IKI, to attend to anomalies like subjects stopping mid-typing
+    """
+    Function is used to correct the IKI, to attend to anomalies like subjects stopping mid-typing
     to attend to other matters, thus causing faulty temporal dynamics.
 
     Parameters
@@ -718,7 +719,7 @@ def sentence_level_pause_correction(
     char_count_response_threshold : int, optional
         The minimum number of characters required for an entry to be considered a valid attempt
     cut_off_percentile : float, optional
-        [description], by default 0.99
+        IKI values above this threshold are replace by the first moment of correction_model, by default 99
     correction_model : str, optional
         Generative model used to do adjusments, by default "gengamma"
 
@@ -763,17 +764,20 @@ def sentence_level_pause_correction(
 
         # Move to numpy array for easier computation
         x = np.array(timestamp_diffs)
-
-        # Remove all NANs and remove all NEGATIVE values
+        # Remove all NANs and remove all NEGATIVE values (this removes the first NaN value too)
         x = x[~np.isnan(x)]
         # Have to do in two operations because of NaN presence
         x = x[x > 0.0]
-
         # Fit suitable density for modelling correct replacement value
         params_MLE = pause_funcs[correction_model](x)
 
+        # TODO: this operation is the only one we need to cut
         # Set cut off value
-        cut_off_value = pause_funcs_cut_off_quantile[correction_model](*((cut_off_percentile,) + params_MLE))
+        # cut_off_value = pause_funcs_cut_off_quantile[correction_model](*((cut_off_percentile,) + params_MLE))
+        # TODO: working here, updating cut-off stats, make sure percentile is between [0,100]
+        # TODO: make suitable choice her regarding which interpolation we use for the IKI
+        cut_off_value = np.percentile(x, cut_off_percentile, interpolation="lower")
+
         assert cut_off_value > 0, "INFO:\n\t value: {} \n\t sentence ID: {}".format(cut_off_value, sentence)
 
         # Set replacement value

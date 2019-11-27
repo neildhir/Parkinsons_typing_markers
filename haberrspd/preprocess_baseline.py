@@ -24,7 +24,12 @@ from haberrspd.preprocess import (
 
 
 def calculate_iki_and_ed_baseline(
-    df: pd.DataFrame, df_meta: pd.DataFrame = None, drop_shift=False, attempt=1, invokation_type: int = -1
+    df: pd.DataFrame,
+    df_meta: pd.DataFrame = None,
+    drop_shift=False,
+    attempt=1,
+    invokation_type: int = -1,
+    verbose=False,
 ):
 
     if df_meta is not None:
@@ -48,7 +53,7 @@ def calculate_iki_and_ed_baseline(
         # Reset index so that we can sort it properly in the next step
         df.reset_index(drop=True, inplace=True)
         # Make sure that we've dropped the keyups in the MRC dataframe
-        assert "keyup" not in df.type
+        assert "keyup" not in df.type.tolist()
 
         # Remove shift characters or not
         if drop_shift:
@@ -57,7 +62,8 @@ def calculate_iki_and_ed_baseline(
             # In-place dropping of these rows
             df.drop(df.index[(df.key == "β")], inplace=True)
             df.reset_index(drop=True, inplace=True)
-            print("\n Number of shift-rows dropped: %i" % len(idxs_shift))
+            if verbose:
+                print("\n Number of shift-rows dropped: %i" % len(idxs_shift))
 
         backspace_char = "α"
         ref = reference_sentences(which_dataset)
@@ -72,7 +78,11 @@ def calculate_iki_and_ed_baseline(
     else:
         print("\n Pickled file wasn't found.")
         # Corrected inter-key-intervals (i.e. timestamp difference / delta)
-        corrected_inter_key_intervals = sentence_level_pause_correction(df)
+        corrected_inter_key_intervals, iki_replacement_stats = sentence_level_pause_correction(df)
+        if verbose:
+            print("IKI replacement stats:\n")
+            # TODO: fix so that this prints the dict properly
+            print(iki_replacement_stats)
 
     data = []
     # Loop over sentence IDs
