@@ -12,6 +12,7 @@ import seaborn as sns
 # from flair.models import TextClassifier
 from pandas import DataFrame, read_csv
 from plotly.offline import download_plotlyjs, init_notebook_mode, iplot, plot
+from scipy import interp
 from sklearn.manifold import TSNE
 from sklearn.metrics import auc, roc_curve
 from sklearn.preprocessing import label_binarize
@@ -35,7 +36,7 @@ mpl.rcParams.update(nice_fonts)
 def plot_superimposed_roc_curves(data: dict, filename=None) -> None:
 
     if filename:
-        assert type(filename) == str
+        assert isinstance(filename, str)
 
     if ~isinstance(data, dict):
         # We've been passed a list of dicts
@@ -57,13 +58,47 @@ def plot_superimposed_roc_curves(data: dict, filename=None) -> None:
     lw = 2
     fig, ax = plt.subplots(1, 1, figsize=(3, 3))
     palette = sns.color_palette(n_colors=len(data))
-    for i, item in enumerate(data.keys()):
-        y_true, y_scores = data[item]
-        # Main calculations here
-        fpr, tpr, _ = roc_curve(y_true, y_scores, pos_label=1)
-        # Calculate area under the ROC curve here
-        auc = np.trapz(tpr, fpr)
-        ax.plot(fpr, tpr, color=palette[i], lw=lw, alpha=0.8, label="%s: AUC = %0.2f" % (item, auc))
+
+    if isinstance(data["I"], tuple):
+        # Simple ROC curves
+        for i, item in enumerate(data.keys()):
+            y_true, y_scores = data[item]
+            # Main calculations here
+            fpr, tpr, _ = roc_curve(y_true, y_scores, pos_label=1)
+            # Calculate area under the ROC curve here
+            auc = np.trapz(tpr, fpr)
+            ax.plot(fpr, tpr, color=palette[i], lw=lw, alpha=0.8, label="%s: AUC = %0.2f" % (item, auc))
+    elif isinstance(data["I"], list):
+        # ROC curves with confidence bounds
+        for i, item in enumerate(data.keys()):
+            tprs = []
+            aucs = []
+            # False positive rate
+            mean_fpr = np.linspace(0, 1, len(data["I"][0][0]))
+            # Get all results
+            for out in data[item]:
+                # out[1] == y_true, out[1] == y_score
+                fpr, tpr, _ = roc_curve(out[0], out[1], pos_label=1)
+                # Calculate area under the ROC curve here
+                auc = np.trapz(tpr, fpr)
+                aucs.append(auc)
+                tprs.append(interp(mean_fpr, fpr, tpr))
+            # Mean ROC curve
+            mean_tpr = np.mean(tprs, axis=0)
+            assert len(mean_tpr) == len(mean_fpr)
+            mean_tpr[-1] = 1.0
+            mean_auc = np.trapz(mean_fpr, mean_tpr)
+            std_auc = np.std(aucs)
+            # Plot mean curve
+            ax.plot(mean_fpr, mean_tpr, color=palette[i], lw=lw, alpha=0.8, label="%s: AUC = %0.2f" % (item, auc))
+            # Fill inbetween
+            std_tpr = np.std(tprs, axis=0)
+            tprs_upper = np.minimum(mean_tpr + 2 * std_tpr, 1)
+            tprs_lower = np.maximum(mean_tpr - 2 * std_tpr, 0)
+            plt.fill_between(mean_fpr, tprs_lower, tprs_upper, color=palette[i], alpha=0.4)
+
+    else:
+        raise ValueError
 
     ax.plot([0, 1], [0, 1], color="gray", lw=lw, linestyle="--", alpha=0.25)
     ax.set_xlim([0.0, 1.0])

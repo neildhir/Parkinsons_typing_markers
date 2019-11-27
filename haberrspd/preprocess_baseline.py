@@ -1,10 +1,11 @@
 # Basline calculation stuff
 
-from collections import Counter, defaultdict
-from statistics import mean, median
-from pathlib import Path
 import os.path
 import pickle
+import pprint
+from collections import Counter, defaultdict
+from pathlib import Path
+from statistics import mean, median
 
 import numpy as np
 import pandas as pd
@@ -70,19 +71,20 @@ def calculate_iki_and_ed_baseline(
         data_root = Path("../data/MRC/")
         full_path = data_root / "sentence_level_pause_correct_mrc.pkl"
 
-    # TODO: special functions to apply to deal with shift and backspace for MRC
-
     if os.path.exists(full_path):
-        pkl_file = open(full_path, "rb")
-        corrected_inter_key_intervals = pickle.load(pkl_file)
+        corrected_inter_key_intervals = pickle.load(open(full_path, "rb"))
     else:
         print("\n Pickled file wasn't found.")
         # Corrected inter-key-intervals (i.e. timestamp difference / delta)
         corrected_inter_key_intervals, iki_replacement_stats = sentence_level_pause_correction(df)
+        # If no local file store it
+        # pickle.dump(
+        #     corrected_inter_key_intervals,
+        #     open(data_root / "sentence_level_pause_correct_{}.pkl".format(which_dataset), "wb"),
+        # )
         if verbose:
             print("IKI replacement stats:\n")
-            # TODO: fix so that this prints the dict properly
-            print(iki_replacement_stats)
+            pprint.pprint(iki_replacement_stats, width=1)
 
     data = []
     # Loop over sentence IDs
@@ -133,14 +135,25 @@ def calculate_iki_and_ed_baseline(
             if df_meta is not None:
                 # MJFF
                 diagnosis = int(df_meta.loc[(df_meta.participant_id == participant), "diagnosis"])
+                col_names = ["Patient_ID", "Sentence_ID", "Diagnosis", "Mean_IKI", "Var_IKI", "Edit_Distance"]
+                # Data for dataframe
+                data.append((participant, sentence, diagnosis, iki.mean(), iki.var(), ed))
             else:
                 # MRC
                 diagnosis = int(df[df.participant_id == participant].diagnosis.unique())
+                medication = int(df[df.participant_id == participant].medication.unique())
+                col_names = [
+                    "Patient_ID",
+                    "Sentence_ID",
+                    "Diagnosis",
+                    "Medication",
+                    "Mean_IKI",
+                    "Var_IKI",
+                    "Edit_Distance",
+                ]
+                # Data for dataframe
+                data.append((participant, sentence, diagnosis, medication, iki.mean(), iki.var(), ed))
 
-            # Data for dataframe
-            data.append((participant, sentence, diagnosis, iki.mean(), iki.var(), ed))
-
-    col_names = ["Patient_ID", "Sentence_ID", "Diagnosis", "Mean_IKI", "Var_IKI", "Edit_Distance"]
     if df_meta is not None:
         results = remap_English_MJFF_participant_ids(pd.DataFrame(data, columns=col_names))
     else:
@@ -168,7 +181,12 @@ def select_reference_sentence(which_dataset, sentence, participant, reference_df
         return reference_df[reference_df[column] == sentence]["REFERENCE_TEXT"].values[0]
 
 
-def calculate_all_baseline_ROC_curves(df, test_size=0.25):
+from sklearn.metrics import auc, confusion_matrix, roc_curve
+from sklearn.model_selection import ShuffleSplit, train_test_split
+from sklearn.ensemble import RandomForestClassifier
+
+
+def calculate_all_baseline_ROC_curves(df, test_size=0.25, n_reruns=None):
     measures = ["Edit_Distance", "Mean_IKI", "Diagnosis"]
     assert set(measures).issubset(df.columns)
     features = ["Mean_IKI", ["Edit_Distance", "Mean_IKI"]]
@@ -176,35 +194,47 @@ def calculate_all_baseline_ROC_curves(df, test_size=0.25):
     results = {"I": None, "II": None}
     assert len(results) == len(features)
     for i, j in zip(features, results.keys()):
+
         # List of features
         if isinstance(i, list):
-            # 100 here is the upper limit on the total number of participants
-            if df[i].shape[0] < 100:
-                X = np.hstack([np.vstack(df[j]) for j in i])
-            else:
-                X = df[i].to_numpy()
+            X = df[i].to_numpy()
         # Singular feature
         else:
-            # 100 here is the upper limit on the total number of participants
-            if df[i].shape[0] < 100:
-                X = np.vstack(df[i])
-            else:
-                X = df[i].to_numpy().reshape(-1, 1)
+            X = df[i].to_numpy().reshape(-1, 1)
 
-        # targets
+        # Get targets
         y = df.Diagnosis.to_numpy()
 
-        # We use 25% of our data for test [sklearn default]
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
+        if n_reruns:
+            # Rerun the classification n times
+            scores = []
+            for _ in range(n_reruns):
+                # We use 25% of our data for test [sklearn default]
+                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
 
-        # Classify
-        # clf = SVC(class_weight="balanced", gamma="auto", probability=True)
-        clf = RandomForestClassifier(n_estimators=500, class_weight="balanced")
-        clf.fit(X_train, y_train)
-        y_probas = clf.predict_proba(X_test)
+                # Classify
+                # clf = SVC(class_weight="balanced", gamma="auto", probability=True)
+                clf = RandomForestClassifier(n_estimators=500, class_weight="balanced")
+                clf.fit(X_train, y_train)
+                y_probas = clf.predict_proba(X_test)
+                scores.append((y_test, y_probas[:, 1]))
 
-        # Store
-        results[j] = (y_test, y_probas[:, 1])
+            # Store
+            results[j] = scores
+
+        else:
+
+            # We use 25% of our data for test [sklearn default]
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
+
+            # Classify
+            # clf = SVC(class_weight="balanced", gamma="auto", probability=True)
+            clf = RandomForestClassifier(n_estimators=250, class_weight="balanced")
+            clf.fit(X_train, y_train)
+            y_probas = clf.predict_proba(X_test)
+
+            # Store
+            results[j] = (y_test, y_probas[:, 1])
 
     return results
 

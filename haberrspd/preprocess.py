@@ -707,7 +707,7 @@ def sentence_level_pause_correction(
     char_count_response_threshold: int = 40,
     cut_off_percentile: int = 99,
     correction_model: str = "gengamma",
-) -> Tuple[dict, list]:
+) -> Tuple[dict, dict]:
     """
     Function is used to correct the IKI, to attend to anomalies like subjects stopping mid-typing
     to attend to other matters, thus causing faulty temporal dynamics.
