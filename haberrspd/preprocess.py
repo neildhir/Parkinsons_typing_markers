@@ -13,19 +13,16 @@ import pandas as pd
 from nltk.metrics import edit_distance  # Levenshtein
 from scipy.stats import gamma, gengamma, lognorm
 
-from haberrspd.__init_paths import data_root
+from haberrspd.__init_paths import *  # One should not do this, but here it is fine
 
 # ------------------------------------------ MRC------------------------------------------ #
 
 
 def remove_superfluous_reponse_id_rows(df: pd.DataFrame) -> pd.DataFrame:
     """
-    This function only really needs to be used once. It was used [21/11/19] to remove duplicate rows
-    for certain (subject, sentence) indices where the data-storing process had become corrupted, causing
-    multiple versions of the same sentence to be stored under the same aforementioned index.
+    Removes duplicate rows for certain (subject, sentence) indices where the data-storing process became corrupted, causing multiple versions of the same sentence to be stored under the same aforementioned index.
 
-    This function removes the duplicates entries, and ensures that only one response_id is recorded per
-    typed sentence.
+    This function removes the duplicates entries, and ensures that only one response_id is recorded per typed sentence.
 
     Parameters
     ----------
@@ -78,7 +75,7 @@ class processMRC:
         raw = pd.read_csv(data_root / "CombinedTypingDataNov21-duplicateeventsremoved.csv", header=0)
 
         # Clean
-        df = clean_mrc(raw)
+        df = process_mrc(raw)
 
         # Preprocess: create sentences to be used in NLP model
         # TODO: this function does currently [22/11/2019] not work, use the IKI version instead
@@ -93,7 +90,7 @@ class processMRC:
         return df
 
 
-def clean_mrc(df: pd.DataFrame) -> pd.DataFrame:
+def process_mrc(df: pd.DataFrame) -> pd.DataFrame:
     """
     Function provides the heavy lifting in cleaning the MRC dataset.
 
@@ -108,7 +105,11 @@ def clean_mrc(df: pd.DataFrame) -> pd.DataFrame:
         The cleaned dataset
     """
 
+    # Remove duplicate response IDs -- only _one_ response ID per subject
+    remove_superfluous_reponse_id_rows(df)
+    # Some sentences are too corrupted to be useuful so are dropped
     remove_typed_sentences_with_high_edit_distance(df)
+    # Some subjects have used left/right arrow keys which is not allowed
     remove_sentences_with_arrow_keys(df)
 
     # Replace following keys with an UNK symbol (in this case "£")
@@ -151,13 +152,26 @@ def clean_mrc(df: pd.DataFrame) -> pd.DataFrame:
     }
     df.replace({"key": char_replace_dict}, inplace=True)
 
-    # As well as all columns just to make life easier
+    # Add a medication column to tell if they are on medication or not
+    assign_medication_column(df)
+
+    # Make column names lower case as well, to make life easier
     df.columns = df.columns.str.lower()
 
     # Return only relevant columns
-    return df[["key", "type", "location", "timestamp", "participant_id", "sentence_id", "diagnosis"]].reset_index(
-        drop=True
-    )
+    return df[
+        ["key", "type", "location", "timestamp", "participant_id", "sentence_id", "diagnosis", "medication"]
+    ].reset_index(drop=True)
+
+
+def assign_medication_column(df):
+    # Load master reference for medication
+    meds = pd.read_csv(Path("../data/MRC") / "MedicationInfo.csv")
+    # Pre-assign a column of zeros
+    N, _ = df.shape
+    df["medication"] = np.zeros(N, dtype=int)
+    for i in meds.TypingID:
+        df.loc[df.participant_id == i, "medication"] = int(meds[(meds.TypingID == i)].MEDICATED)
 
 
 def make_char_compression_sentences_from_raw_typing_mrc(
@@ -864,7 +878,9 @@ def create_char_iki_extended_mjff_data(
             coordinates = (df.participant_id == subj_idx) & (df.sentence_id == sent_idx)
 
             # "correct" the sentence by operating on user backspaces
-            corrected_char_sentence, removed_chars_indx = backspace_corrector(df.loc[coordinates, "key"].tolist())
+            corrected_char_sentence, removed_chars_indx = backspace_implementer_mjff(
+                df.loc[coordinates, "key"].tolist()
+            )
 
             L = len(corrected_compression_times[sent_idx][subj_idx])
             assert set(removed_chars_indx).issubset(
@@ -930,7 +946,7 @@ def create_char_mjff_data(df: pd.DataFrame, char_count_response_threshold: int =
             coordinates = (df.participant_id == subject) & (df.sentence_id == sentence)
 
             # "correct" the sentence by operating on user backspaces
-            corrected_char_sentence, _ = backspace_corrector(
+            corrected_char_sentence, _ = backspace_implementer_mjff(
                 df.loc[coordinates, "key"].tolist(), invokation_type=invokation_type
             )
 
@@ -1187,7 +1203,7 @@ def combine_characters_to_form_words_at_space(typed_keys: dict, sent_ids: list, 
                 if correct:
                     # A fairly simple correction algorithm applied to invoke the subject's correction
                     completed_sentence_per_subject_per_sentence[sub_id][sent_id] = "".join(
-                        backspace_corrector(typed_keys[sub_id][sent_id])
+                        backspace_implementer_mjff(typed_keys[sub_id][sent_id])
                     )
                 elif correct is False:
                     # Here we remove those same backspaces from the sentence so that we
@@ -1219,7 +1235,7 @@ def remove_leading_backspaces(x, removal_character):
         return x
 
 
-def backspace_corrector(
+def backspace_implementer_mjff(
     sentence: list, removal_character="backspace", invokation_type=1, verbose: bool = False, indicator_character="€"
 ) -> Tuple[list, list]:
     """
@@ -1295,9 +1311,8 @@ def backspace_corrector(
                 # This _may_ introduce negative indices at the start of a sentence
                 # these are filtered out further down
 
-                # TODO: is this correct below?!
-
-                indication_cords.extend(range_extend(group[:-1]))  # This invokes the n-1 backspaces
+                # This keeps the error and adds the indicator character right after
+                indication_cords.extend(range_extend(group)[1:-1])  # This invokes the n-1 backspaces
 
     else:
         raise ValueError
@@ -1392,6 +1407,8 @@ def create_MJFF_dataset(
     pandas dataframe
         Processed dataframe
     """
+    data_root = "/home/neil/cloud/habitual_errors_NLP/data/"  # My local path
+    data_root = Path(data_root)
 
     # Load raw text and meta data
     if language == "english":
@@ -1406,6 +1423,9 @@ def create_MJFF_dataset(
         df = select_attempt(df, df_meta, attempt=attempt)
 
     elif language == "spanish":
+
+        # TODO: this all needs to be updated to reflect new data wrangling
+
         df = pd.read_csv(data_root / "MJFF" / "raw" / "SpanishData-duplicateeventsremoved.csv")
         df_meta = pd.read_csv(
             data_root / "MJFF" / "raw" / "SpanishParticipantKey.csv",
@@ -1476,15 +1496,14 @@ def create_proper_spanish_letters(df: pd.DataFrame) -> pd.DataFrame:
 
     # Get the unique number of participants (control AND pd)
     subjects = sorted(set(df.participant_id))  # NOTE: set() is weakly random
-    # Sentence identifiers
-    sentences = sorted(set(df.sentence_id))  # NOTE: set() is weakly random
-    # Loop over all sentences
-    for sent in sentences:
-        # Loop over all subjects
-        for sub in subjects:
+
+    for subject in subjects:
+        # Not all subjects have typed all sentences hence we have to do it this way
+        for sentence in df.loc[(df.participant_id == subject)].sentence_id.unique():
+
             # Get typed sentence
-            typed_characters = df.loc[(df.participant_id == sub) & (df.sentence_id == sent)].key.values
-            typed_chars_index = df.loc[(df.participant_id == sub) & (df.sentence_id == sent)].index
+            typed_characters = df.loc[(df.participant_id == subject) & (df.sentence_id == sentence)].key.values
+            typed_chars_index = df.loc[(df.participant_id == subject) & (df.sentence_id == sentence)].index
             if any(c in special_spanish_characters for c in typed_characters):
                 # Check which character is present in the typed sentence
                 for char in special_spanish_characters:

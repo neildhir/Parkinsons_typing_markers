@@ -12,11 +12,11 @@ import pandas as pd
 from nltk import edit_distance
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import auc, confusion_matrix, roc_curve
-from sklearn.model_selection import ShuffleSplit, train_test_split
+from sklearn.model_selection import ShuffleSplit, train_test_split, StratifiedShuffleSplit
 from sklearn.svm import SVC  # Support vector classifier
 
 from haberrspd.preprocess import (
-    backspace_corrector,
+    backspace_implementer_mjff,
     create_MJFF_dataset,
     remap_English_MJFF_participant_ids,
     select_attempt,
@@ -27,28 +27,30 @@ from haberrspd.preprocess import (
 def calculate_iki_and_ed_baseline(
     df: pd.DataFrame,
     df_meta: pd.DataFrame = None,
+    which_dataset="mjff_english",
     drop_shift=False,
     attempt=1,
     invokation_type: int = -1,
     verbose=False,
 ):
 
-    if df_meta is not None:
-        # MJFF
+    assert which_dataset in ["mrc", "mjff_spanish", "mjff_english"]
+
+    if which_dataset == "mjff_english" or which_dataset == "mjff_spanish":
         print("MJFF")
-        which_dataset = "mjff"
+        assert df_meta is not None
         backspace_char = "backspace"
         ref = reference_sentences(which_dataset)
-        # Select which attempt we are considering
-        df = select_attempt(df, df_meta, attempt=attempt)
-        assert len(df.attempt.unique()) == 1
+        if which_dataset == "mjff_english":
+            # Select which attempt we are considering
+            df = select_attempt(df, df_meta, attempt=attempt)
+            assert len(df.attempt.unique()) == 1
+
         data_root = Path("../data/MJFF/")
         full_path = data_root / "sentence_level_pause_correct_mjff.pkl"
 
     else:
-        # MRC
         print("MRC")
-        which_dataset = "mrc"
         # In-place dropping of keyup rows
         df.drop(df.index[(df.type == "keyup")], inplace=True)
         # Reset index so that we can sort it properly in the next step
@@ -74,7 +76,6 @@ def calculate_iki_and_ed_baseline(
     if os.path.exists(full_path):
         corrected_inter_key_intervals = pickle.load(open(full_path, "rb"))
     else:
-        print("\n Pickled file wasn't found.")
         # Corrected inter-key-intervals (i.e. timestamp difference / delta)
         corrected_inter_key_intervals, iki_replacement_stats = sentence_level_pause_correction(df)
         # If no local file store it
@@ -102,7 +103,7 @@ def calculate_iki_and_ed_baseline(
                 if len(df[coordinates]) != 0:
 
                     # "correct" the sentence by operating on user backspaces
-                    corrected_character_sentence, removed_chars_indx = backspace_corrector(
+                    corrected_character_sentence, removed_chars_indx = backspace_implementer_mjff(
                         df.loc[coordinates, "key"].tolist(),
                         removal_character=backspace_char,
                         invokation_type=invokation_type,
@@ -132,7 +133,7 @@ def calculate_iki_and_ed_baseline(
                 raise ValueError
 
             # Append to list which we'll pass to a dataframe in subsequent cells
-            if df_meta is not None:
+            if which_dataset == "mjff_english" or which_dataset == "mjff_spanish":
                 # MJFF
                 diagnosis = int(df_meta.loc[(df_meta.participant_id == participant), "diagnosis"])
                 col_names = ["Patient_ID", "Sentence_ID", "Diagnosis", "Mean_IKI", "Var_IKI", "Edit_Distance"]
@@ -154,7 +155,7 @@ def calculate_iki_and_ed_baseline(
                 # Data for dataframe
                 data.append((participant, sentence, diagnosis, medication, iki.mean(), iki.var(), ed))
 
-    if df_meta is not None:
+    if which_dataset == "mjff_english":
         results = remap_English_MJFF_participant_ids(pd.DataFrame(data, columns=col_names))
     else:
         results = pd.DataFrame(data, columns=col_names)
@@ -166,24 +167,37 @@ def calculate_iki_and_ed_baseline(
     return results
 
 
-def select_reference_sentence(which_dataset, sentence, participant, reference_df):
-    if which_dataset == "mjff":
-        # An MJFF sentence
-        return reference_df[reference_df["MJFF_IDS"] == sentence]["REFERENCE_TEXT"].values[0]
+def reference_sentences(which_dataset):
+    assert which_dataset in ["mrc", "mjff_spanish", "mjff_english"]
+
+    if which_dataset == "mjff_english":
+        fields = ["MJFF_IDS", "REFERENCE_TEXT"]
+        return pd.read_csv("../aux/sentence_IDs.csv", usecols=fields)
+    elif which_dataset == "mjff_spanish":
+        return pd.read_csv("../aux/spanish_sentence_IDs.csv", header=0)
+    elif which_dataset == "mrc":
+        fields = ["MRC_PATIENT_DATA_IDS", "MRC_CONTROL_DATA_IDS", "REFERENCE_TEXT"]
+        return pd.read_csv("../aux/sentence_IDs.csv", usecols=fields)
     else:
+        raise ValueError
+
+
+def select_reference_sentence(which_dataset, sentence_id, participant_id, reference_df):
+    if which_dataset == "mjff_english":
+        # An MJFF sentence
+        return reference_df[reference_df["MJFF_IDS"] == sentence_id]["REFERENCE_TEXT"].values[0]
+    elif which_dataset == "mjff_spanish":
+        # An MJFF sentence
+        return reference_df[reference_df["sentence_id"] == sentence_id]["sentence_text"].values[0]
+    elif which_dataset == "mrc":
         # An MRC sentence
-        if participant < 1000:
+        if participant_id < 1000:
             # A patient
             column = "MRC_PATIENT_DATA_IDS"
         else:
             # A control
             column = "MRC_CONTROL_DATA_IDS"
-        return reference_df[reference_df[column] == sentence]["REFERENCE_TEXT"].values[0]
-
-
-from sklearn.metrics import auc, confusion_matrix, roc_curve
-from sklearn.model_selection import ShuffleSplit, train_test_split
-from sklearn.ensemble import RandomForestClassifier
+        return reference_df[reference_df[column] == sentence_id]["REFERENCE_TEXT"].values[0]
 
 
 def calculate_all_baseline_ROC_curves(df, test_size=0.25, n_reruns=None):
@@ -208,13 +222,14 @@ def calculate_all_baseline_ROC_curves(df, test_size=0.25, n_reruns=None):
         if n_reruns:
             # Rerun the classification n times
             scores = []
-            for _ in range(n_reruns):
-                # We use 25% of our data for test [sklearn default]
-                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
+            sss = StratifiedShuffleSplit(n_splits=n_reruns, test_size=test_size, random_state=42)
+            # clf = SVC(class_weight="balanced", gamma="auto", probability=True)
+            clf = RandomForestClassifier(n_estimators=100, class_weight="balanced")
+            for train_index, test_index in sss.split(X, y):
+                X_train, X_test = X[train_index], X[test_index]
+                y_train, y_test = y[train_index], y[test_index]
 
                 # Classify
-                # clf = SVC(class_weight="balanced", gamma="auto", probability=True)
-                clf = RandomForestClassifier(n_estimators=500, class_weight="balanced")
                 clf.fit(X_train, y_train)
                 y_probas = clf.predict_proba(X_test)
                 scores.append((y_test, y_probas[:, 1]))
@@ -229,7 +244,7 @@ def calculate_all_baseline_ROC_curves(df, test_size=0.25, n_reruns=None):
 
             # Classify
             # clf = SVC(class_weight="balanced", gamma="auto", probability=True)
-            clf = RandomForestClassifier(n_estimators=250, class_weight="balanced")
+            clf = RandomForestClassifier(n_estimators=100, class_weight="balanced")
             clf.fit(X_train, y_train)
             y_probas = clf.predict_proba(X_test)
 
@@ -279,7 +294,7 @@ def convert_df_to_subject_level(df: pd.DataFrame) -> pd.DataFrame:
 def test_different_splits_for_classification(Z):
 
     X, y = Z
-    r = RandomForestClassifier(n_estimators=256, class_weight="balanced")
+    clf = RandomForestClassifier(n_estimators=100, class_weight="balanced")
     rs = ShuffleSplit(n_splits=100, test_size=0.25)
 
     AUC = []
@@ -288,9 +303,9 @@ def test_different_splits_for_classification(Z):
     for train_idx, test_idx in rs.split(X):
         X_train, X_test = X[train_idx], X[test_idx]
         y_train, y_test = y[train_idx], y[test_idx]
-        r.fit(X_train, y_train)
-        y_probas = r.predict_proba(X_test)
-        y_pred = r.predict(X_test)
+        clf.fit(X_train, y_train)
+        y_probas = clf.predict_proba(X_test)
+        y_pred = clf.predict(X_test)
         # Confusion mat
         tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
         # Main calculations here
@@ -333,17 +348,6 @@ def get_X_and_y_from_df(df):
         sets[j] = (X, y)
 
     return sets
-
-
-def reference_sentences(which_dataset):
-    assert which_dataset in ["mrc", "mjff"]
-
-    if which_dataset == "mjff":
-        fields = ["MJFF_IDS", "REFERENCE_TEXT"]
-    else:
-        fields = ["MRC_PATIENT_DATA_IDS", "MRC_CONTROL_DATA_IDS", "REFERENCE_TEXT"]
-
-    return pd.read_csv("../aux/sentence_IDs.csv", usecols=fields)
 
 
 def remap_sentence_ids_for_control_subjects_mrc(df):

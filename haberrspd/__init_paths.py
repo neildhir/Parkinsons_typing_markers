@@ -19,9 +19,11 @@ add_path(lib_path)
 # Depending on where I am, set the path
 if socket.gethostname() == "pax":
     # Monster machine
-    data_root = "/home/neil/cloud/habitual_errors_NLP/data/"  # My local path
-    data_root = Path(data_root)
+    # data_root = "/home/neil/cloud/habitual_errors_NLP/data/"  # My local path
+    # data_root = Path(data_root)
+    pass
 else:
     # Laptop
-    data_root = "/home/nd/data/liverpool/MJFF"  # My local path
-    data_root = Path(data_root)
+    # data_root = "/home/nd/data/liverpool/MJFF"  # My local path
+    # data_root = Path(data_root)
+    pass
