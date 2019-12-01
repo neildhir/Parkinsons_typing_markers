@@ -82,7 +82,7 @@ class processMRC:
         sentences, _ = make_char_compression_sentences_from_raw_typing_mrc(df)
 
         # Convert into NLP-readable format
-        df = create_dataframe_from_processed_data(sentences, raw)
+        df = create_dataframe_from_processed_mjff_data(sentences, raw)
 
         # Print summary stats of what we have loaded.
         dataset_summary_statistics(df)
@@ -647,15 +647,15 @@ class preprocessMJFF:
     def __init__(self):
         print("\tMichael J. Fox Foundation PD copy-typing data.\n")
 
-    def __call__(self, get_language: str = "english", include_time=True) -> pd.DataFrame:
+    def __call__(self, which_language: str = "english", which_attempt=1, include_time=True) -> pd.DataFrame:
 
-        assert get_language in ["english", "spanish", "all"], "You must pass a valid option."
+        assert which_language in ["english", "spanish", "all"], "You must pass a valid option."
 
-        if get_language == "all":
+        if which_language == "all":
             # Load English MJFF data
-            df_english, _ = create_MJFF_dataset("english", include_time)
+            df_english, _ = create_MJFF_dataset("english", include_time, attempt=which_attempt)
             # Load Spanish MJFF data
-            df_spanish, _ = create_MJFF_dataset("spanish", include_time)
+            df_spanish, _ = create_MJFF_dataset("spanish", include_time, attempt=which_attempt)
             # Merge datasets
             assert all(df_english.columns == df_spanish.columns)
             df = pd.concat([df_english, df_spanish], ignore_index=True)
@@ -663,7 +663,7 @@ class preprocessMJFF:
             dataset_summary_statistics(df)
             return df
         else:
-            df, _ = create_MJFF_dataset(get_language, include_time)
+            df, _ = create_MJFF_dataset(which_language, include_time, attempt=which_attempt)
             # Print summary stats of what we have loaded.
             dataset_summary_statistics(df)
             return df
@@ -708,7 +708,7 @@ def dataset_summary_statistics(df: pd.DataFrame):
         Preprocessed pandas dataframe.
     """
     sentence_lengths = np.stack([np.char.str_len(i) for i in df.Preprocessed_typed_sentence.unique()])
-    print("Total number of study subjects: %d" % (len(set(df.Patient_ID))))
+    print("Total number of study subjects: %d" % (len(df.Patient_ID.unique())))
     print("Number of sentences typed by PD patients: %d" % (len(df.loc[df.Diagnosis == 1])))
     print("Number of sentences typed by controls: %d" % (len(df.loc[df.Diagnosis == 0])))
     print("Average sentence length: %05.2f" % sentence_lengths.mean())
@@ -860,10 +860,10 @@ def create_char_iki_extended_mjff_data(
     subjects = sorted(set(df.participant_id))  # NOTE: set() is weakly random
 
     # All sentences will be stored here, indexed by their type
-    char_compression_sentences = defaultdict(dict)
+    long_format_sentences = defaultdict(dict)
 
-    # Get the updated compression times
-    corrected_compression_times = sentence_level_pause_correction(
+    # Corrected inter-key-intervals (i.e. timestamp difference / delta)
+    corrected_inter_key_intervals, iki_replacement_stats = sentence_level_pause_correction(
         df, char_count_response_threshold=char_count_response_threshold
     )
 
@@ -878,20 +878,27 @@ def create_char_iki_extended_mjff_data(
             coordinates = (df.participant_id == subj_idx) & (df.sentence_id == sent_idx)
 
             # "correct" the sentence by operating on user backspaces
-            corrected_char_sentence, removed_chars_indx = backspace_implementer_mjff(
+            corrected_sentence, removed_character_indices = backspace_implementer_mjff(
                 df.loc[coordinates, "key"].tolist()
             )
 
-            L = len(corrected_compression_times[sent_idx][subj_idx])
-            assert set(removed_chars_indx).issubset(
+            # Get length of corrected IKI sequence
+            L = len(corrected_inter_key_intervals[sent_idx][subj_idx])
+
+            # Check consistency
+            assert set(removed_character_indices).issubset(
                 range(L)
-            ), "Indices to remove: {} -- total length of timestamp vector: {}".format(removed_chars_indx, L)
-            compression_times = corrected_compression_times[sent_idx][subj_idx].drop(index=removed_chars_indx)
+            ), "Indices to remove: {} -- total length of timestamp vector: {}".format(removed_character_indices, L)
+
+            # Drop indices that were removed above
+            inter_key_intervals = corrected_inter_key_intervals[sent_idx][subj_idx].drop(
+                index=removed_character_indices
+            )
 
             # Make long-format version of each typed, corrected, sentence
-            # Note that we remove the last character to make the calculation correct.
-            char_compression_sentences[subj_idx][sent_idx] = make_character_compression_time_sentence(
-                compression_times, corrected_char_sentence, time_redux_fact
+            # Note that we remove the first character to make the calculation correct.
+            long_format_sentences[subj_idx][sent_idx] = make_long_format_sentence(
+                inter_key_intervals, corrected_sentence, time_redux_fact
             )
 
     # No one likes an empty list so we remove them here
@@ -900,9 +907,9 @@ def create_char_iki_extended_mjff_data(
         for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
             # Combines sentences to contiguous sequences (if not empty)
             # if not char_compression_sentences[subj_idx][sent_idx]:
-            char_compression_sentences[subj_idx][sent_idx] = "".join(char_compression_sentences[subj_idx][sent_idx])
+            long_format_sentences[subj_idx][sent_idx] = "".join(long_format_sentences[subj_idx][sent_idx])
 
-    return char_compression_sentences
+    return long_format_sentences
 
 
 def create_char_mjff_data(df: pd.DataFrame, char_count_response_threshold: int = 40, invokation_type: int = 1) -> dict:
@@ -969,9 +976,7 @@ def flatten(my_list):
     return [item for sublist in my_list for item in sublist]
 
 
-def make_character_compression_time_sentence(
-    compression_times: pd.Series, characters: pd.Series, time_redux_fact=10
-) -> str:
+def make_long_format_sentence(compression_times: pd.Series, characters: pd.Series, time_redux_fact=10) -> str:
     """
     Function creates a long-format sentence, where each character is repeated for a discrete
     number of steps, commensurate with how long that character was compressed for, when
@@ -1278,9 +1283,9 @@ def backspace_implementer_mjff(
         return ["#" if x == removal_character else x for x in sentence], None
 
     # Coordinates which will be replaced by an error-implementation indicator
-    indication_cords = []
+    indicator_indices = []
 
-    # Find the indices of all the reamaining backspace occurences
+    # Find the indices of all the remaining backspace occurences
     backspace_indices = np.where(np.asarray(sentence) == removal_character)[0]
 
     # Find all singular and contiguous appearances of backspace
@@ -1294,17 +1299,17 @@ def backspace_implementer_mjff(
         for group in backspace_groups:
             # A singular backspace
             if len(group) == 1:
-                indication_cords.extend([group[0] - 1, group[0]])
+                indicator_indices.extend([group[0] - 1, group[0]])
 
             else:
-                indication_cords.extend(range_extend(group))
+                indicator_indices.extend(range_extend(group))
 
     elif invokation_type == 1:
         # Replace all characters indicated by 'backspace' _except_ the last character which is kept
         for group in backspace_groups:
             if len(group) == 1:
 
-                # Replace backspace with indicator character inline
+                # Replace single backspace with indicator character inline
                 sentence[group[0]] = indicator_character
 
             else:
@@ -1312,19 +1317,18 @@ def backspace_implementer_mjff(
                 # these are filtered out further down
 
                 # This keeps the error and adds the indicator character right after
-                indication_cords.extend(range_extend(group)[1:-1])  # This invokes the n-1 backspaces
-
+                indicator_indices.extend(range_extend(group)[1:-1])  # This invokes the n-1 backspaces
     else:
         raise ValueError
 
     # Filter out negative indices which are non-sensical for deletion (arises when more backspaces than characters in beginning of sentence)
-    indication_cords = list(filter(lambda x: x >= 0, indication_cords))
+    indicator_indices = list(filter(lambda x: x >= 0, indicator_indices))
 
     # Filter out deletion indices which appear at the end of the sentence as part of a contiguous group of backspaces
-    indication_cords = list(filter(lambda x: x < len(original_sentence), indication_cords))
+    indicator_indices = list(filter(lambda x: x < len(original_sentence), indicator_indices))
 
-    # Replace backspace action with an indicator
-    invoked_sentence = np.delete(sentence, indication_cords).tolist()
+    # Delete at indicator coordinates
+    invoked_sentence = np.delete(sentence, indicator_indices).tolist()
 
     # Replace remaining backspace with indicator
     invoked_sentence = [indicator_character if x == removal_character else x for x in invoked_sentence]
@@ -1333,10 +1337,10 @@ def backspace_implementer_mjff(
         print("Original sentence: {}\n".format(original_sentence))
         print("Edited sentence: {} \n -----".format(invoked_sentence))
 
-    return invoked_sentence, list(chain.from_iterable(backspace_groups))
+    return invoked_sentence, indicator_indices
 
 
-def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame) -> pd.DataFrame:
+def create_dataframe_from_processed_mjff_data(my_dict: dict, df_meta: pd.DataFrame) -> pd.DataFrame:
     """
     Function creates a pandas DataFrame which will be used by the NLP model
     downstream.
@@ -1365,7 +1369,7 @@ def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame) -
                         participant_id,
                         int(df_meta.loc[df_meta.participant_id == participant_id, "diagnosis"]),
                         str(sent_id),
-                        my_dict[participant_id][sent_id],
+                        str(my_dict[participant_id][sent_id]),
                     ]
                     for sent_id in my_dict[participant_id].keys()
                 ]
@@ -1419,33 +1423,16 @@ def create_MJFF_dataset(
         )
         df = pd.read_csv(data_root / "MJFF" / "raw" / "EnglishData-duplicateeventsremoved.csv")
 
-        # Select which attempt we are interested in.
+        # Select which attempt we are interested in, only English has attempts
         df = select_attempt(df, df_meta, attempt=attempt)
 
     elif language == "spanish":
 
-        # TODO: this all needs to be updated to reflect new data wrangling
-
-        df = pd.read_csv(data_root / "MJFF" / "raw" / "SpanishData-duplicateeventsremoved.csv")
-        df_meta = pd.read_csv(
-            data_root / "MJFF" / "raw" / "SpanishParticipantKey.csv",
-            header=0,
-            names=["participant_id", "ID", "attempt", "diagnosis"],
-        )
-        df_meta.index = df_meta.index.astype(str)
-
-        # Post-processing of the data could have lead to corrupted entries
-        uncorrupted_participants = [i for i in set(df.participant_id) if i.isdigit()]
-
-        # There is no label for subject 167, so we remove her here.
-        uncorrupted_participants.remove("167")
-        df = df[df["participant_id"].isin(uncorrupted_participants)]
-
+        # Load raw text and meta data
+        df = pd.read_csv(data_root / "MJFF" / "raw" / "SpanishData-Nov_28_2019.csv")
+        df_meta = pd.read_csv(data_root / "MJFF" / "raw" / "SpanishDiagnosisAndMedicationInfo.csv", header=0)
         # 'correct' Spanish characters
         df = create_proper_spanish_letters(df)
-
-        # Select which attempt we are interested in.
-        df = select_attempt(df, df_meta, attempt)
 
     else:
         raise ValueError
@@ -1454,8 +1441,6 @@ def create_MJFF_dataset(
     reference_sentences = df.loc[:, ["sentence_id", "sentence_text"]].drop_duplicates().reset_index(drop=True)
 
     if include_time:
-        # This option includes information on: character and timing
-
         # Creates long sequences with characters repeated for IKI number of steps
         out = create_char_iki_extended_mjff_data(df)
     else:
@@ -1463,7 +1448,7 @@ def create_MJFF_dataset(
         out = create_char_mjff_data(df, invokation_type=invokation_type)
 
     # Final formatting of typing data
-    df = create_dataframe_from_processed_data(out, df_meta).reset_index(drop=True)
+    df = create_dataframe_from_processed_mjff_data(out, df_meta).reset_index(drop=True)
 
     if language == "english":
         # Remap participant identifiers so that that e.g. 10a -> 10 and 10b -> 10.

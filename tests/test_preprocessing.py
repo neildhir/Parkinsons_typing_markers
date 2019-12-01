@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from haberrspd.preprocess import (backspace_implementer_mjff,
-                                  make_character_compression_time_sentence,
+                                  make_long_format_sentence,
                                   sentence_level_pause_correction)
 
 
@@ -82,7 +82,7 @@ class TestPreprocessing(unittest.TestCase):
         This test ensure that the construction is commensurate with the intention.
         """
         target = list('ppeessssttt')  # Expected output
-        output = make_character_compression_time_sentence(
+        output = make_long_format_sentence(
             self.compression_times,
             self.raw_character_sequence,
             time_redux_fact=1)
