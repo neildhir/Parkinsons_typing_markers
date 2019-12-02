@@ -20,7 +20,7 @@ from haberrspd.preprocess import (
     create_MJFF_dataset,
     remap_English_MJFF_participant_ids,
     select_attempt,
-    sentence_level_pause_correction,
+    iki_pause_correction,
 )
 
 
@@ -77,7 +77,7 @@ def calculate_iki_and_ed_baseline(
         corrected_inter_key_intervals = pickle.load(open(full_path, "rb"))
     else:
         # Corrected inter-key-intervals (i.e. timestamp difference / delta)
-        corrected_inter_key_intervals, iki_replacement_stats = sentence_level_pause_correction(df)
+        corrected_inter_key_intervals, iki_replacement_stats = iki_pause_correction(df)
         # If no local file store it
         # pickle.dump(
         #     corrected_inter_key_intervals,

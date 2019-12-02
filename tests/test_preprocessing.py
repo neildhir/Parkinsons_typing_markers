@@ -6,7 +6,7 @@ import pandas as pd
 
 from haberrspd.preprocess import (universal_backspace_implementer,
                                   make_long_format_sentence,
-                                  sentence_level_pause_correction)
+                                  iki_pause_correction)
 
 
 class TestPreprocessing(unittest.TestCase):
@@ -138,7 +138,7 @@ class TestPreprocessing(unittest.TestCase):
         """
 
         # Invoke correction method, keeping all defaults but one
-        out = sentence_level_pause_correction(self.df, char_count_response_threshold=3)
+        out = iki_pause_correction(self.df, char_count_response_threshold=3)
 
         self.assertEqual(out[0]['1a'].all(), pd.Series([np.nan, 1.0, 2.0, 2.0, 2.0, 1.0, 2.0, 2.0, 2.0]).all())
         self.assertEqual(out[1]['1a'].all(), pd.Series([np.nan, 3., 3., 3., 3., 3., 3., 3., 3.]).all())
@@ -149,3 +149,4 @@ class TestPreprocessing(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+ikis

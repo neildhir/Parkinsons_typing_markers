@@ -54,7 +54,7 @@ def remove_superfluous_reponse_id_rows(df: pd.DataFrame) -> pd.DataFrame:
     df.reset_index(drop=True, inplace=True)
 
 
-class processMRC:
+class preprocessMRC:
     """
     Governing class with which the user will interface.
     All the heavy lifting happens under the hood.
@@ -85,9 +85,7 @@ class processMRC:
         pd.DataFrame
             Dataframe which headers: subject_id, sentence_id, medication, processed_typed_sentence
         """
-        # TODO: check processing class
-
-        df, _ = create_MRC_dataset(include_time, attempt=which_attempt)
+        df = create_MRC_dataset(include_time=include_time, attempt=which_attempt)
         # Print summary stats of what we have loaded.
         dataset_summary_statistics(df)
         return df
@@ -117,7 +115,7 @@ class processMRC:
     #     return df
 
 
-def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1) -> pd.DataFrame:
+def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1, drop_shift=True) -> pd.DataFrame:
     """
     End-to-end creation of raw data to NLP readable train and test sets.
 
@@ -133,7 +131,9 @@ def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1) -> pd.Da
     pandas dataframe
         Processed dataframe
     """
-    data_root = Path("/home/neil/cloud/habitual_errors_NLP/data/MRC/")  # My local path
+    data_root = Path("../data/MRC/")  # My local path
+    backspace_char = "α"
+    shift_char = "β"
 
     if not path.exists(data_root / "processed_mrc_dataset.pkl"):
         print("Couldn't find processed data. Re-running now...\n")
@@ -151,15 +151,31 @@ def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1) -> pd.Da
     else:
         raise ValueError
 
+    # In-place dropping of keyup rows
+    df.drop(df.index[(df.type == "keyup")], inplace=True)
+    # Reset index so that we can sort it properly in the next step
+    df.reset_index(drop=True, inplace=True)
+    # Make sure that we've dropped the keyups in the MRC dataframe
+    assert "keyup" not in df.type.tolist()
+
+    # Remove shift characters or not
+    if drop_shift:
+        # In-place dropping of these rows
+        df.drop(df.index[(df.key == shift_char)], inplace=True)
+        # Reset index so that we can sort it properly in the next step
+        df.reset_index(drop=True, inplace=True)
+
+    assert all(df.groupby(["participant_id", "sentence_id"]).key.transform("count") > 40)
+
     if include_time:
         # Creates long sequences with characters repeated for IKI number of steps
-        out = create_char_iki_extended_data(df)
+        sentence_dictionary = create_char_iki_extended_data(df, backspace_char=backspace_char, invokation_type=1)
     else:
         # This option _only_ includes the characters.
-        out = create_char_data(df, invokation_type=invokation_type)
+        sentence_dictionary = create_char_data(df, backspace_char=backspace_char, invokation_type=invokation_type)
 
     # Final formatting of typing data (note that df contains the diagnosis here)
-    final = create_dataframe_from_processed_mjff_data(out, df).reset_index(drop=True)
+    final = create_dataframe_from_processed_data(sentence_dictionary, df).reset_index(drop=True)
 
     # Return the empirical data and the reference sentences for downstream tasks
     return final
@@ -791,7 +807,7 @@ def dataset_summary_statistics(df: pd.DataFrame):
     print("Maximum sentence length: %d" % sentence_lengths.max())
 
 
-def sentence_level_pause_correction(
+def iki_pause_correction(
     df: pd.DataFrame,
     char_count_response_threshold: int = 40,
     cut_off_percentile: int = 99,
@@ -902,7 +918,11 @@ def sentence_level_pause_correction(
 
 
 def create_char_iki_extended_data(
-    df: pd.DataFrame, char_count_response_threshold=40, time_redux_fact=10
+    df: pd.DataFrame,
+    char_count_response_threshold=40,
+    time_redux_fact=10,
+    backspace_char="backspace",
+    invokation_type=1,
 ) -> Tuple[dict, list]:
     """
     This function does the following given e.g. typed list ['a','b','c'] with corresponding
@@ -938,27 +958,31 @@ def create_char_iki_extended_data(
     long_format_sentences = defaultdict(dict)
 
     # Corrected inter-key-intervals (i.e. timestamp difference / delta)
-    corrected_inter_key_intervals, iki_replacement_stats = sentence_level_pause_correction(
+    corrected_inter_key_intervals, iki_replacement_stats = iki_pause_correction(
         df, char_count_response_threshold=char_count_response_threshold
     )
 
     # Loop over subjects
-    for subj_idx in subjects:
+    for subject in subjects:
         # Not all subjects have typed all sentences hence we have to do it this way
-        for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
+        for sentence in df.loc[(df.participant_id == subject)].sentence_id.unique():
 
             # print("subject: {} -- sentence: {}".format(subj_idx, sent_idx))
 
             # Locate df segment to extract
-            coordinates = (df.participant_id == subj_idx) & (df.sentence_id == sent_idx)
+            coordinates = (df.participant_id == subject) & (df.sentence_id == sentence)
 
             # "correct" the sentence by operating on user backspaces
             corrected_sentence, removed_character_indices = universal_backspace_implementer(
-                df.loc[coordinates, "key"].tolist()
+                df.loc[coordinates, "key"].tolist(), removal_character=backspace_char, invokation_type=invokation_type
+            )
+            # Sanity check
+            assert len(corrected_sentence) > char_count_response_threshold, "Subject: {} and sentence: {}".format(
+                subject, sentence
             )
 
             # Get length of corrected IKI sequence
-            L = len(corrected_inter_key_intervals[sent_idx][subj_idx])
+            L = len(corrected_inter_key_intervals[sentence][subject])
 
             # Check consistency
             assert set(removed_character_indices).issubset(
@@ -966,28 +990,47 @@ def create_char_iki_extended_data(
             ), "Indices to remove: {} -- total length of timestamp vector: {}".format(removed_character_indices, L)
 
             # Drop indices that were removed above
-            inter_key_intervals = corrected_inter_key_intervals[sent_idx][subj_idx].drop(
-                index=removed_character_indices
+            inter_key_intervals = corrected_inter_key_intervals[sentence][subject].drop(index=removed_character_indices)
+            # Sanity check
+            assert len(inter_key_intervals) > char_count_response_threshold, "Subject: {} and sentence: {}".format(
+                subject, sentence
             )
 
             # Make long-format version of each typed, corrected, sentence
             # Note that we remove the first character to make the calculation correct.
-            long_format_sentences[subj_idx][sent_idx] = make_long_format_sentence(
+            long_format_sentences[subject][sentence] = make_long_format_sentence(
                 inter_key_intervals, corrected_sentence, time_redux_fact
             )
+            # Sanity check
+            assert (
+                len(long_format_sentences[subject][sentence]) > char_count_response_threshold
+            ), "Subject: {}; sentence: {}; length: {}\n Sentence: {}\n Chars: {}\nIKIs: {}".format(
+                subject,
+                sentence,
+                len(long_format_sentences[subject][sentence]),
+                long_format_sentences[subject][sentence],
+                corrected_sentence,
+                inter_key_intervals,
+            )
 
-    # No one likes an empty list so we remove them here
-    for subj_idx in subjects:
-        # Not all subjects have typed all sentences hence we have to do it this way
-        for sent_idx in df.loc[(df.participant_id == subj_idx)].sentence_id.unique():
-            # Combines sentences to contiguous sequences (if not empty)
-            # if not char_compression_sentences[subj_idx][sent_idx]:
-            long_format_sentences[subj_idx][sent_idx] = "".join(long_format_sentences[subj_idx][sent_idx])
+    # # No one likes an empty list so we remove them here
+    # for subject in subjects:
+    #     # Not all subjects have typed all sentences hence we have to do it this way
+    #     for sentence in df.loc[(df.participant_id == subject)].sentence_id.unique():
+    #         # Combines sentences to contiguous sequences (if not empty)
+    #         # if not char_compression_sentences[subj_idx][sent_idx]:
+    #         long_format_sentences[subject][sentence] = "".join(long_format_sentences[subject][sentence])
+    #         # Sanity check
+    #         assert (
+    #             len(long_format_sentences[subject][sentence]) > char_count_response_threshold
+    #         ), "Subject: {} and sentence: {}".format(subject, sentence)
 
     return long_format_sentences
 
 
-def create_char_data(df: pd.DataFrame, char_count_response_threshold: int = 40, invokation_type: int = 1) -> dict:
+def create_char_data(
+    df: pd.DataFrame, char_count_response_threshold: int = 40, backspace_char="backspace", invokation_type: int = 1
+) -> dict:
     """
     Function combines the typed characters, per sentence, per subject, to form proper sentences using various forms of error invokation.
 
@@ -1029,19 +1072,19 @@ def create_char_data(df: pd.DataFrame, char_count_response_threshold: int = 40, 
 
             # "correct" the sentence by operating on user backspaces
             corrected_char_sentence, _ = universal_backspace_implementer(
-                df.loc[coordinates, "key"].tolist(), invokation_type=invokation_type
+                df.loc[coordinates, "key"].tolist(), removal_character=backspace_char, invokation_type=invokation_type
             )
 
             # Note that we remove the last character to make the calculation correct.
-            character_only_sentences[subject][sentence] = corrected_char_sentence
+            character_only_sentences[subject][sentence] = "".join(corrected_char_sentence)
 
-    # Combines the string
-    for subject in subjects:
-        # Not all subjects have typed all sentences hence we have to do it this way
-        for sentence in df.loc[(df.participant_id == subject)].sentence_id.unique():
-            # Combines sentences to contiguous sequences (if not empty)
-            # if not char_compression_sentences[subj_idx][sent_idx]:
-            character_only_sentences[subject][sentence] = "".join(character_only_sentences[subject][sentence])
+    # # Combines the string
+    # for subject in subjects:
+    #     # Not all subjects have typed all sentences hence we have to do it this way
+    #     for sentence in df.loc[(df.participant_id == subject)].sentence_id.unique():
+    #         # Combines sentences to contiguous sequences (if not empty)
+    #         # if not char_compression_sentences[subj_idx][sent_idx]:
+    #         character_only_sentences[subject][sentence] = "".join(character_only_sentences[subject][sentence])
 
     return character_only_sentences
 
@@ -1051,7 +1094,7 @@ def flatten(my_list):
     return [item for sublist in my_list for item in sublist]
 
 
-def make_long_format_sentence(compression_times: pd.Series, characters: pd.Series, time_redux_fact=10) -> str:
+def make_long_format_sentence(ikis, characters, time_redux_fact=10) -> str:
     """
     Function creates a long-format sentence, where each character is repeated for a discrete
     number of steps, commensurate with how long that character was compressed for, when
@@ -1061,8 +1104,8 @@ def make_long_format_sentence(compression_times: pd.Series, characters: pd.Serie
 
     Parameters
     ----------
-    compression_times : pd.Series
-        Compression times in milliseconds
+    ikis : pd.Series
+        inter-key intervals in milliseconds
     characters : pd.Series
         Individual characters in the typed sentence.
     time_redux_fact : int, optional
@@ -1074,16 +1117,11 @@ def make_long_format_sentence(compression_times: pd.Series, characters: pd.Serie
     list
         Returns a list in which each character has been repeated a number of times.
     """
-
-    assert len(compression_times) == len(characters), "Lengths are: {} and {}".format(
-        len(compression_times), len(characters)
-    )
-
-    if type(compression_times) is not pd.Series:
-        compression_times = pd.Series(compression_times)
-
-    char_times = compression_times // time_redux_fact
-    return flatten([[c] * int(n) for c, n in zip(characters[:-1], char_times[1:])])
+    assert len(ikis) == len(characters), "Lengths are: {} and {}".format(len(ikis), len(characters))
+    # Get discretised inter-key intervals
+    ikis = list(ikis // time_redux_fact)
+    # return flatten([[c] * int(n) for c, n in zip(characters[:-1], ikis[1:])])
+    return "".join([c * int(n) for c, n in zip(characters[:-1], ikis[1:])])
 
 
 def measure_levensthein_for_lang8_data(data_address: str, ld_threshold: int = 2) -> pd.DataFrame:
@@ -1415,7 +1453,7 @@ def universal_backspace_implementer(
     return invoked_sentence, indicator_indices
 
 
-def create_dataframe_from_processed_mjff_data(my_dict: dict, df_meta: pd.DataFrame) -> pd.DataFrame:
+def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame) -> pd.DataFrame:
     """
     Function creates a pandas DataFrame which will be used by the NLP model
     downstream.
@@ -1489,13 +1527,13 @@ def create_MJFF_dataset(
     pandas dataframe
         Processed dataframe
     """
-    data_root = "/home/neil/cloud/habitual_errors_NLP/data/"  # My local path
+    data_root = "../data/MJFF/"  # My local path
     data_root = Path(data_root)
 
     # Load raw text and meta data
     if language == "english":
         df_meta = pd.read_csv(
-            data_root / "MJFF" / "raw" / "EnglishParticipantKey.csv",
+            data_root / "raw" / "EnglishParticipantKey.csv",
             header=0,
             names=["participant_id", "ID", "attempt", "diagnosis"],
         )
@@ -1526,7 +1564,7 @@ def create_MJFF_dataset(
         out = create_char_data(df, invokation_type=invokation_type)
 
     # Final formatting of typing data
-    df = create_dataframe_from_processed_mjff_data(out, df_meta).reset_index(drop=True)
+    df = create_dataframe_from_processed_data(out, df_meta).reset_index(drop=True)
 
     if language == "english":
         # Remap participant identifiers so that that e.g. 10a -> 10 and 10b -> 10.
