@@ -16,7 +16,7 @@ from sklearn.model_selection import ShuffleSplit, train_test_split, StratifiedSh
 from sklearn.svm import SVC  # Support vector classifier
 
 from haberrspd.preprocess import (
-    backspace_implementer_mjff,
+    universal_backspace_implementer,
     create_MJFF_dataset,
     remap_English_MJFF_participant_ids,
     select_attempt,
@@ -103,7 +103,7 @@ def calculate_iki_and_ed_baseline(
                 if len(df[coordinates]) != 0:
 
                     # "correct" the sentence by operating on user backspaces
-                    corrected_character_sentence, removed_chars_indx = backspace_implementer_mjff(
+                    corrected_character_sentence, removed_chars_indx = universal_backspace_implementer(
                         df.loc[coordinates, "key"].tolist(),
                         removal_character=backspace_char,
                         invokation_type=invokation_type,

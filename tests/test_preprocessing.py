@@ -4,7 +4,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from haberrspd.preprocess import (backspace_implementer_mjff,
+from haberrspd.preprocess import (universal_backspace_implementer,
                                   make_long_format_sentence,
                                   sentence_level_pause_correction)
 
@@ -95,10 +95,10 @@ class TestPreprocessing(unittest.TestCase):
         """
 
         # Single leading backspace
-        output, _ = backspace_implementer_mjff(self.backspace_error_one)
+        output, _ = universal_backspace_implementer(self.backspace_error_one)
         self.assertEqual(output, self.base_sequence)
         # Multiple leading backspace
-        output, _ = backspace_implementer_mjff(self.backspace_error_three)
+        output, _ = universal_backspace_implementer(self.backspace_error_three)
         self.assertEqual(output, self.base_sequence)
 
     def test_leading_trailing_removal(self):
@@ -107,10 +107,10 @@ class TestPreprocessing(unittest.TestCase):
         """
 
         # Single leading backspace
-        output, _ = backspace_implementer_mjff(self.backspace_error_two)
+        output, _ = universal_backspace_implementer(self.backspace_error_two)
         self.assertEqual(output, self.base_sequence)
         # Multiple trailing backspaces
-        output, _ = backspace_implementer_mjff(self.backspace_error_four)
+        output, _ = universal_backspace_implementer(self.backspace_error_four)
         # Output == ['p','e','s','t']
         self.assertEqual(output, self.base_sequence[:-1])
 
@@ -118,13 +118,13 @@ class TestPreprocessing(unittest.TestCase):
         """
         Test a complex sequence of characters and backspaces.
         """
-        output, indices = backspace_implementer_mjff(self.complex_error_one)
+        output, indices = universal_backspace_implementer(self.complex_error_one)
         self.assertEqual(output, list('to tastes very ni'))
         # Check that deletion indices are correct
         self.assertEqual(indices, [0, 1, 2, 3, 4, 5, 10, 24, 25, 26, 27, 28])
 
     def test_backspace_replacement(self):
-        output, _ = backspace_implementer_mjff(self.backspace_error_one, invokation_type=-1)
+        output, _ = universal_backspace_implementer(self.backspace_error_one, invokation_type=-1)
         self.backspace_error_one[0] = '£'
         # Should return a sequence in which the backspace has been replaced with a £ char.
         self.assertEqual(output, self.backspace_error_one)

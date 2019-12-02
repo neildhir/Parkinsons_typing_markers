@@ -5,6 +5,7 @@ import warnings
 from collections import Counter, defaultdict
 from itertools import chain, count, groupby
 from operator import itemgetter
+from os import path
 from pathlib import Path
 from typing import Tuple
 
@@ -64,30 +65,104 @@ class processMRC:
 
     def __init__(self):
         print("\tMedical Research Council funded PD copy-typing data.\n")
+        warnings.warn("This is a temporary processing class. The final is still under construction as of [02/12/2019].")
 
-    # TODO: need to invoke the long_format keyword at some point
-    def __call__(self, long_format=True) -> pd.DataFrame:
+    def __call__(self, which_attempt=1, include_time=False) -> pd.DataFrame:
+        """
+        This class is somewhat different to the MJFF loading class. See options below.
 
-        # Location on Neil's big machine in Sweden
-        data_root = Path("../data/MRC/")
+        Parameters
+        ----------
+        which_attempt : int, optional
+            There are two options here:
+                1) which_attempt=1 corresponds to controls vs. unmedicated patients
+                1) which_attempt=2 corresponds to controls vs. medicated patients
+        include_time : bool, optional
+            If we are using long-format or not, by default True
 
-        # Read data [ensure that this is the newest version available]
-        raw = pd.read_csv(data_root / "CombinedTypingDataNov21-duplicateeventsremoved.csv", header=0)
+        Returns
+        -------
+        pd.DataFrame
+            Dataframe which headers: subject_id, sentence_id, medication, processed_typed_sentence
+        """
+        # TODO: check processing class
 
-        # Clean
-        df = process_mrc(raw)
-
-        # Preprocess: create sentences to be used in NLP model
-        # TODO: this function does currently [22/11/2019] not work, use the IKI version instead
-        sentences, _ = make_char_compression_sentences_from_raw_typing_mrc(df)
-
-        # Convert into NLP-readable format
-        df = create_dataframe_from_processed_mjff_data(sentences, raw)
-
+        df, _ = create_MRC_dataset(include_time, attempt=which_attempt)
         # Print summary stats of what we have loaded.
         dataset_summary_statistics(df)
-
         return df
+
+    # # TODO: need to invoke the long_format keyword at some point
+    # def __call__(self, long_format=True) -> pd.DataFrame:
+
+    #     # Location on Neil's big machine in Sweden
+    #     data_root = Path("../data/MRC/")
+
+    #     # Read data [ensure that this is the newest version available]
+    #     raw = pd.read_csv(data_root / "CombinedTypingDataNov21-duplicateeventsremoved.csv", header=0)
+
+    #     # Clean
+    #     df = process_mrc(raw)
+
+    #     # Preprocess: create sentences to be used in NLP model
+    #     # TODO: this function does currently [22/11/2019] not work, use the IKI version instead
+    #     sentences, _ = make_char_compression_sentences_from_raw_typing_mrc(df)
+
+    #     # Convert into NLP-readable format
+    #     df = create_dataframe_from_processed_mjff_data(sentences, raw)
+
+    #     # Print summary stats of what we have loaded.
+    #     dataset_summary_statistics(df)
+
+    #     return df
+
+
+def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1) -> pd.DataFrame:
+    """
+    End-to-end creation of raw data to NLP readable train and test sets.
+
+    Parameters
+    ----------
+    langauge : str
+        Select which language should be preprocessed.
+    attempt: int
+        Select which attempt we are intersted in.
+
+    Returns
+    -------
+    pandas dataframe
+        Processed dataframe
+    """
+    data_root = Path("/home/neil/cloud/habitual_errors_NLP/data/MRC/")  # My local path
+
+    if not path.exists(data_root / "processed_mrc_dataset.pkl"):
+        print("Couldn't find processed data. Re-running now...\n")
+        df = process_mrc(pd.read_csv(data_root / "Raw_CombinedTypingData_Nov28.csv", header=0))
+    else:
+        df = pd.read_pickle(data_root / "processed_mrc_dataset.pkl")
+
+    # Select which attempt we are interested in, only English has attempts
+    if attempt == 1:
+        # Controls vs unmedicated patients
+        df = df.loc[(df.medication == 0)]
+    elif attempt == 2:
+        # Controls vs medicated patients
+        df = pd.concat([df[(df.diagnosis == 1) & (df.medication == 1)], df[df.diagnosis == 0]], ignore_index=True)
+    else:
+        raise ValueError
+
+    if include_time:
+        # Creates long sequences with characters repeated for IKI number of steps
+        out = create_char_iki_extended_data(df)
+    else:
+        # This option _only_ includes the characters.
+        out = create_char_data(df, invokation_type=invokation_type)
+
+    # Final formatting of typing data (note that df contains the diagnosis here)
+    final = create_dataframe_from_processed_mjff_data(out, df).reset_index(drop=True)
+
+    # Return the empirical data and the reference sentences for downstream tasks
+    return final
 
 
 def process_mrc(df: pd.DataFrame) -> pd.DataFrame:
@@ -708,7 +783,7 @@ def dataset_summary_statistics(df: pd.DataFrame):
         Preprocessed pandas dataframe.
     """
     sentence_lengths = np.stack([np.char.str_len(i) for i in df.Preprocessed_typed_sentence.unique()])
-    print("Total number of study subjects: %d" % (len(df.Patient_ID.unique())))
+    print("\nTotal number of study subjects: %d" % (len(df.Patient_ID.unique())))
     print("Number of sentences typed by PD patients: %d" % (len(df.loc[df.Diagnosis == 1])))
     print("Number of sentences typed by controls: %d" % (len(df.loc[df.Diagnosis == 0])))
     print("Average sentence length: %05.2f" % sentence_lengths.mean())
@@ -826,14 +901,14 @@ def sentence_level_pause_correction(
     return corrected_timestamp_diff, pause_replacement_stats
 
 
-def create_char_iki_extended_mjff_data(
+def create_char_iki_extended_data(
     df: pd.DataFrame, char_count_response_threshold=40, time_redux_fact=10
 ) -> Tuple[dict, list]:
     """
     This function does the following given e.g. typed list ['a','b','c'] with corresponding
     timestamp values [3,7,10] then it creates the following "long-format" lists:
-    L = [NaN, 'bbbb', 'ccc'] and then merges L[1:] as so ['bbbbccc']. This is what we call in the paper a
-    'long format' sentence.
+    L = [NaN, 'bbbb', 'ccc'] and then merges L[1:] as so ['bbbbccc']. This is what we call
+    in the paper a 'long format' sentence.
 
     Parameters
     ----------
@@ -878,7 +953,7 @@ def create_char_iki_extended_mjff_data(
             coordinates = (df.participant_id == subj_idx) & (df.sentence_id == sent_idx)
 
             # "correct" the sentence by operating on user backspaces
-            corrected_sentence, removed_character_indices = backspace_implementer_mjff(
+            corrected_sentence, removed_character_indices = universal_backspace_implementer(
                 df.loc[coordinates, "key"].tolist()
             )
 
@@ -912,7 +987,7 @@ def create_char_iki_extended_mjff_data(
     return long_format_sentences
 
 
-def create_char_mjff_data(df: pd.DataFrame, char_count_response_threshold: int = 40, invokation_type: int = 1) -> dict:
+def create_char_data(df: pd.DataFrame, char_count_response_threshold: int = 40, invokation_type: int = 1) -> dict:
     """
     Function combines the typed characters, per sentence, per subject, to form proper sentences using various forms of error invokation.
 
@@ -942,7 +1017,7 @@ def create_char_mjff_data(df: pd.DataFrame, char_count_response_threshold: int =
     subjects = sorted(set(df.participant_id))  # NOTE: set() is weakly random
 
     # All sentences will be stored here, indexed by their type
-    char_sentences = defaultdict(dict)
+    character_only_sentences = defaultdict(dict)
 
     # Loop over subjects
     for subject in subjects:
@@ -953,12 +1028,12 @@ def create_char_mjff_data(df: pd.DataFrame, char_count_response_threshold: int =
             coordinates = (df.participant_id == subject) & (df.sentence_id == sentence)
 
             # "correct" the sentence by operating on user backspaces
-            corrected_char_sentence, _ = backspace_implementer_mjff(
+            corrected_char_sentence, _ = universal_backspace_implementer(
                 df.loc[coordinates, "key"].tolist(), invokation_type=invokation_type
             )
 
             # Note that we remove the last character to make the calculation correct.
-            char_sentences[subject][sentence] = corrected_char_sentence
+            character_only_sentences[subject][sentence] = corrected_char_sentence
 
     # Combines the string
     for subject in subjects:
@@ -966,9 +1041,9 @@ def create_char_mjff_data(df: pd.DataFrame, char_count_response_threshold: int =
         for sentence in df.loc[(df.participant_id == subject)].sentence_id.unique():
             # Combines sentences to contiguous sequences (if not empty)
             # if not char_compression_sentences[subj_idx][sent_idx]:
-            char_sentences[subject][sentence] = "".join(char_sentences[subject][sentence])
+            character_only_sentences[subject][sentence] = "".join(character_only_sentences[subject][sentence])
 
-    return char_sentences
+    return character_only_sentences
 
 
 def flatten(my_list):
@@ -1208,7 +1283,7 @@ def combine_characters_to_form_words_at_space(typed_keys: dict, sent_ids: list, 
                 if correct:
                     # A fairly simple correction algorithm applied to invoke the subject's correction
                     completed_sentence_per_subject_per_sentence[sub_id][sent_id] = "".join(
-                        backspace_implementer_mjff(typed_keys[sub_id][sent_id])
+                        universal_backspace_implementer(typed_keys[sub_id][sent_id])
                     )
                 elif correct is False:
                     # Here we remove those same backspaces from the sentence so that we
@@ -1240,7 +1315,7 @@ def remove_leading_backspaces(x, removal_character):
         return x
 
 
-def backspace_implementer_mjff(
+def universal_backspace_implementer(
     sentence: list, removal_character="backspace", invokation_type=1, verbose: bool = False, indicator_character="€"
 ) -> Tuple[list, list]:
     """
@@ -1350,7 +1425,7 @@ def create_dataframe_from_processed_mjff_data(my_dict: dict, df_meta: pd.DataFra
     my_dict : dict
         Dictionary containing all the preprocessed typed sentences, indexed by subject
     df_meta : Pandas DataFrame
-        Contains the mete information on each patient
+        Contains the mete information on each patient (for the MRC this is the main dataframe)
 
     Returns
     -------
@@ -1367,7 +1442,7 @@ def create_dataframe_from_processed_mjff_data(my_dict: dict, df_meta: pd.DataFra
                 [
                     [
                         participant_id,
-                        int(df_meta.loc[df_meta.participant_id == participant_id, "diagnosis"]),
+                        int(df_meta.loc[df_meta.participant_id == participant_id, "diagnosis"].unique()),
                         str(sent_id),
                         str(my_dict[participant_id][sent_id]),
                     ]
@@ -1382,6 +1457,9 @@ def create_dataframe_from_processed_mjff_data(my_dict: dict, df_meta: pd.DataFra
     df["Preprocessed_typed_sentence"].replace("", np.nan, inplace=True)
     # Remove all such rows
     df.dropna(subset=["Preprocessed_typed_sentence"], inplace=True)
+    # Final check to ensure that the last column is a string
+    df = df.astype({"Preprocessed_typed_sentence": str})
+
     return df
 
 
@@ -1442,10 +1520,10 @@ def create_MJFF_dataset(
 
     if include_time:
         # Creates long sequences with characters repeated for IKI number of steps
-        out = create_char_iki_extended_mjff_data(df)
+        out = create_char_iki_extended_data(df)
     else:
         # This option _only_ includes the characters.
-        out = create_char_mjff_data(df, invokation_type=invokation_type)
+        out = create_char_data(df, invokation_type=invokation_type)
 
     # Final formatting of typing data
     df = create_dataframe_from_processed_mjff_data(out, df_meta).reset_index(drop=True)

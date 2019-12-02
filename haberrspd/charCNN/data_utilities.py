@@ -9,6 +9,7 @@ from numpy import argwhere, array, dstack, einsum, hstack, int64, ones, pad, mat
 from pandas import read_csv
 from sklearn.model_selection import train_test_split
 from tensorflow import cast, float32, one_hot
+from sklearn.preprocessing import OneHotEncoder
 
 
 def size_of_optimisation_space(params):
@@ -415,3 +416,26 @@ def us_english_keyboard_mrc():
     )
 
     return english_lower, english_upper
+
+
+def bmatrix_from_str(list_of_chars, list_of_ikis=None):
+    """
+    Returns a LaTeX bmatrix
+
+    Usage:
+        print(bmatrix_from_str(['c','a','t','t'],[2,2,2,2]))
+    """
+    if list_of_ikis is None:
+        list_of_ikis = [1] * len(list_of_chars)
+
+    cat = OneHotEncoder()
+    C = "".join([x * y for x, y in zip(list_of_chars, list_of_ikis)])
+    X = array(list(C), dtype=object).T
+    out = cat.fit_transform(X.reshape(-1, 1)).astype(int).toarray().T
+    if len(out.shape) > 2:
+        raise ValueError("bmatrix can at most display two dimensions")
+    lines = str(out).replace("[", "").replace("]", "").splitlines()
+    rv = [r"\begin{bmatrix}"]
+    rv += ["  " + " & ".join(l.split()) + r"\\" for l in lines]
+    rv += [r"\end{bmatrix}"]
+    return "\n".join(rv)
