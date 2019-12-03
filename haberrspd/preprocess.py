@@ -165,6 +165,12 @@ def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1, drop_shi
         # Reset index so that we can sort it properly in the next step
         df.reset_index(drop=True, inplace=True)
 
+    # Sort of all timestamps so that they are monotonically increasing (though not strictly)
+    for i in df.participant_id.unique():
+        for j in df.loc[(df.participant_id == i)].sentence_id.unique():
+            coordinates = (df.participant_id == i) & (df.sentence_id == j)
+            df[coordinates].sort_values(by="timestamp", inplace=True)
+
     assert all(df.groupby(["participant_id", "sentence_id"]).key.transform("count") > 40)
 
     if include_time:
@@ -195,6 +201,12 @@ def process_mrc(df: pd.DataFrame) -> pd.DataFrame:
     pandas dataframe
         The cleaned dataset
     """
+
+    # Remove subject 1039 and 138, their responses are faulty
+    for i in [1039, 138]:
+        df.drop(df.index[(df.participant_id == i)], inplace=True)
+    # Reset index so that we can sort it properly in the next step
+    df.reset_index(drop=True, inplace=True)
 
     # Remove duplicate response IDs -- only _one_ response ID per subject
     remove_superfluous_reponse_id_rows(df)
@@ -1118,9 +1130,15 @@ def make_long_format_sentence(ikis, characters, time_redux_fact=10) -> str:
         Returns a list in which each character has been repeated a number of times.
     """
     assert len(ikis) == len(characters), "Lengths are: {} and {}".format(len(ikis), len(characters))
+    assert any(ikis[1:] > 0)
+
     # Get discretised inter-key intervals
-    ikis = list(ikis // time_redux_fact)
-    # return flatten([[c] * int(n) for c, n in zip(characters[:-1], ikis[1:])])
+    ikis = ikis // time_redux_fact
+
+    # Check if any iki values are < 1
+    if any(ikis[1:] < 1.0):
+        ikis[np.where(ikis[1:] < 1.0)] = 1.0
+
     return "".join([c * int(n) for c, n in zip(characters[:-1], ikis[1:])])
 
 
