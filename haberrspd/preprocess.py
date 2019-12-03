@@ -981,10 +981,14 @@ def create_char_iki_extended_data(
             corrected_sentence, removed_character_indices = universal_backspace_implementer(
                 df.loc[coordinates, "key"].tolist(), removal_character=backspace_char, invokation_type=invokation_type
             )
+
+            if len(corrected_sentence) < char_count_response_threshold:
+                continue
+
             # Sanity check
-            assert len(corrected_sentence) > char_count_response_threshold, "Subject: {} and sentence: {}".format(
-                subject, sentence
-            )
+            assert (
+                len(corrected_sentence) > char_count_response_threshold
+            ), "Subject: {} and sentence: {} \nwith sentence text: {}".format(subject, sentence, corrected_sentence)
 
             # Get length of corrected IKI sequence
             L = len(corrected_inter_key_intervals[sentence][subject])
@@ -1017,18 +1021,6 @@ def create_char_iki_extended_data(
                 corrected_sentence,
                 inter_key_intervals,
             )
-
-    # # No one likes an empty list so we remove them here
-    # for subject in subjects:
-    #     # Not all subjects have typed all sentences hence we have to do it this way
-    #     for sentence in df.loc[(df.participant_id == subject)].sentence_id.unique():
-    #         # Combines sentences to contiguous sequences (if not empty)
-    #         # if not char_compression_sentences[subj_idx][sent_idx]:
-    #         long_format_sentences[subject][sentence] = "".join(long_format_sentences[subject][sentence])
-    #         # Sanity check
-    #         assert (
-    #             len(long_format_sentences[subject][sentence]) > char_count_response_threshold
-    #         ), "Subject: {} and sentence: {}".format(subject, sentence)
 
     return long_format_sentences
 
@@ -1082,14 +1074,6 @@ def create_char_data(
 
             # Note that we remove the last character to make the calculation correct.
             character_only_sentences[subject][sentence] = "".join(corrected_char_sentence)
-
-    # # Combines the string
-    # for subject in subjects:
-    #     # Not all subjects have typed all sentences hence we have to do it this way
-    #     for sentence in df.loc[(df.participant_id == subject)].sentence_id.unique():
-    #         # Combines sentences to contiguous sequences (if not empty)
-    #         # if not char_compression_sentences[subj_idx][sent_idx]:
-    #         character_only_sentences[subject][sentence] = "".join(character_only_sentences[subject][sentence])
 
     return character_only_sentences
 
@@ -1442,7 +1426,10 @@ def universal_backspace_implementer(
                 # these are filtered out further down
 
                 # This keeps the error and adds the indicator character right after
-                indicator_indices.extend(range_extend(group)[1:-1])  # This invokes the n-1 backspaces
+                errorful_sequence_and_backspaces = range_extend(group)
+                # This is the new timestamp to match the below indicator
+                index_of_first_timestamp_of_remove_sequence = errorful_sequence_and_backspaces[1]
+                indicator_indices.extend(errorful_sequence_and_backspaces[1:-1])  # This invokes the n-1 backspaces
     else:
         raise ValueError
 
@@ -1539,7 +1526,7 @@ def create_MJFF_dataset(
     pandas dataframe
         Processed dataframe
     """
-    data_root = "../data/MJFF/"  # My local path
+    data_root = "../data/MJFF"  # My local path
     data_root = Path(data_root)
 
     # Load raw text and meta data
@@ -1549,7 +1536,7 @@ def create_MJFF_dataset(
             header=0,
             names=["participant_id", "ID", "attempt", "diagnosis"],
         )
-        df = pd.read_csv(data_root / "MJFF" / "raw" / "EnglishData-duplicateeventsremoved.csv")
+        df = pd.read_csv(data_root / "raw" / "EnglishData-duplicateeventsremoved.csv")
 
         # Select which attempt we are interested in, only English has attempts
         df = select_attempt(df, df_meta, attempt=attempt)
@@ -1557,8 +1544,8 @@ def create_MJFF_dataset(
     elif language == "spanish":
 
         # Load raw text and meta data
-        df = pd.read_csv(data_root / "MJFF" / "raw" / "SpanishData-Nov_28_2019.csv")
-        df_meta = pd.read_csv(data_root / "MJFF" / "raw" / "SpanishDiagnosisAndMedicationInfo.csv", header=0)
+        df = pd.read_csv(data_root / "raw" / "SpanishData-Nov_28_2019.csv")
+        df_meta = pd.read_csv(data_root / "raw" / "SpanishDiagnosisAndMedicationInfo.csv", header=0)
         # 'correct' Spanish characters
         df = create_proper_spanish_letters(df)
 
