@@ -888,11 +888,7 @@ def iki_pause_correction(
         # Fit suitable density for modelling correct replacement value
         params_MLE = pause_funcs[correction_model](x)
 
-        # TODO: this operation is the only one we need to cut
         # Set cut off value
-        # cut_off_value = pause_funcs_cut_off_quantile[correction_model](*((cut_off_percentile,) + params_MLE))
-        # TODO: working here, updating cut-off stats, make sure percentile is between [0,100]
-        # TODO: make suitable choice her regarding which interpolation we use for the IKI
         cut_off_value = np.percentile(x, cut_off_percentile, interpolation="lower")
 
         assert cut_off_value > 0, "INFO:\n\t value: {} \n\t sentence ID: {}".format(cut_off_value, sentence)
@@ -911,18 +907,15 @@ def iki_pause_correction(
 
             # Make temporary conversion to numpy array
             x = corrected_timestamp_diff[sentence][subject][1:]  # (remove the first entry as it is a NaN)
-            corrected_timestamp_diff[sentence][subject] = pd.Series(
-                # np.concatenate is faster than np.insert
-                np.concatenate(  # Add back NaN to maintain index order
-                    (
-                        [np.nan],
-                        # Two conditions are used here
-                        np.where(
-                            np.logical_or(x > pause_replacement_stats[sentence][0], x < 0),
-                            pause_replacement_stats[sentence][1],
-                            x,
-                        ),
-                    )
+            corrected_timestamp_diff[sentence][subject] = np.concatenate(  # Add back NaN to maintain index order
+                (
+                    [np.nan],
+                    # Two conditions are used here
+                    np.where(
+                        np.logical_or(x > pause_replacement_stats[sentence][0], x < 0),
+                        pause_replacement_stats[sentence][1],
+                        x,
+                    ),
                 )
             )
 
@@ -1002,7 +995,7 @@ def create_char_iki_extended_data(
             ), "Indices to remove: {} -- total length of timestamp vector: {}".format(removed_character_indices, L)
 
             # Drop indices that were removed above
-            inter_key_intervals = corrected_inter_key_intervals[sentence][subject].drop(index=removed_character_indices)
+            inter_key_intervals = np.delete(corrected_inter_key_intervals[sentence][subject], removed_character_indices)
             # Sanity check
             assert len(inter_key_intervals) > char_count_response_threshold, "Subject: {} and sentence: {}".format(
                 subject, sentence
@@ -1130,16 +1123,17 @@ def make_long_format_sentence(ikis, characters, time_redux_fact=10) -> str:
         Returns a list in which each character has been repeated a number of times.
     """
     assert len(ikis) == len(characters), "Lengths are: {} and {}".format(len(ikis), len(characters))
-    assert any(ikis[1:] > 0)
+    ikis = ikis[1:]
+    assert any(ikis > 0)
 
     # Get discretised inter-key intervals
     ikis = ikis // time_redux_fact
 
     # Check if any iki values are < 1
-    if any(ikis[1:] < 1.0):
-        ikis[np.where(ikis[1:] < 1.0)] = 1.0
+    if any(ikis < 1.0):
+        ikis[np.where(ikis < 1.0)[0]] = 1.0
 
-    return "".join([c * int(n) for c, n in zip(characters[:-1], ikis[1:])])
+    return "".join([c * int(n) for c, n in zip(characters[:-1], ikis)])
 
 
 def measure_levensthein_for_lang8_data(data_address: str, ld_threshold: int = 2) -> pd.DataFrame:
