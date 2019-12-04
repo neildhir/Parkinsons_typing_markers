@@ -978,7 +978,7 @@ def create_char_iki_extended_data(
             coordinates = (df.participant_id == subject) & (df.sentence_id == sentence)
 
             # "correct" the sentence by operating on user backspaces
-            corrected_sentence, removed_character_indices = universal_backspace_implementer(
+            corrected_sentence, character_indices_to_delete = universal_backspace_implementer(
                 df.loc[coordinates, "key"].tolist(), removal_character=backspace_char, invokation_type=invokation_type
             )
 
@@ -988,12 +988,13 @@ def create_char_iki_extended_data(
 
             # Check consistency
             L = len(corrected_inter_key_intervals[sentence][subject])
-            assert set(removed_character_indices).issubset(
+            assert set(character_indices_to_delete).issubset(
                 range(L)
-            ), "Indices to remove: {} -- total length of timestamp vector: {}".format(removed_character_indices, L)
+            ), "Indices to remove: {} -- total length of timestamp vector: {}".format(character_indices_to_delete, L)
 
             # Drop indices that were removed above
-            inter_key_intervals = np.delete(corrected_inter_key_intervals[sentence][subject], removed_character_indices)
+            idx = np.array(character_indices_to_delete) + 1
+            inter_key_intervals = np.delete(corrected_inter_key_intervals[sentence][subject], idx)
             # Sanity check
             assert len(inter_key_intervals) > char_count_response_threshold, "Subject: {} and sentence: {}".format(
                 subject, sentence
@@ -1062,12 +1063,16 @@ def create_char_data(
             coordinates = (df.participant_id == subject) & (df.sentence_id == sentence)
 
             # "correct" the sentence by operating on user backspaces
-            corrected_char_sentence, _ = universal_backspace_implementer(
+            corrected_sentence, _ = universal_backspace_implementer(
                 df.loc[coordinates, "key"].tolist(), removal_character=backspace_char, invokation_type=invokation_type
             )
 
-            # Note that we remove the last character to make the calculation correct.
-            character_only_sentences[subject][sentence] = "".join(corrected_char_sentence)
+            # Need to respect the lower limit on the sentence length
+            if len(corrected_sentence) < char_count_response_threshold:
+                continue
+
+            # Note that sentences are lower-cased here
+            character_only_sentences[subject][sentence] = "".join(corrected_sentence).lower()
 
     return character_only_sentences
 
@@ -1101,17 +1106,30 @@ def make_long_format_sentence(ikis, characters, time_redux_fact=10) -> str:
         Returns a list in which each character has been repeated a number of times.
     """
     assert len(ikis) == len(characters), "Lengths are: {} and {}".format(len(ikis), len(characters))
-    ikis = ikis[1:]
-    assert any(ikis > 0)
+    assert any(ikis[1:] > 0)
 
     # Get discretised inter-key intervals
     ikis = ikis // time_redux_fact
 
     # Check if any iki values are < 1
-    if any(ikis < 1.0):
-        ikis[np.where(ikis < 1.0)[0]] = 1.0
+    if any(ikis[1:] < 1.0):
+        ikis[np.where(ikis[1:] < 1.0)[0] + 1] = 1.0
 
-    return "".join([c * int(n) for c, n in zip(characters[:-1], ikis)])
+    # Errorful indicators are only repeated once
+    indicator_indices = np.where(np.array(characters) == "€")[0]
+    if any(indicator_indices == len(characters) - 1):
+        # Catches any indicators that appear at the end of a sentence
+        indicator_indices = np.delete(indicator_indices, np.argwhere(indicator_indices == len(characters) - 1)) + 1
+    else:
+        indicator_indices += 1
+    try:
+        ikis[indicator_indices] = 1
+    except Exception as e:
+        print(ikis)
+        print(characters)
+
+    # Notice that we make each sentence lower-case
+    return "".join([c * int(n) for c, n in zip(characters[:-1], ikis[1:])]).lower()
 
 
 def measure_levensthein_for_lang8_data(data_address: str, ld_threshold: int = 2) -> pd.DataFrame:
@@ -1387,8 +1405,6 @@ def universal_backspace_implementer(
 
     # Coordinates which will be replaced by an error-implementation indicator
     indicator_indices = []
-    # Timestamps to replace the indicator timestamp once backspace sequence is implemented
-    indicator_timestamps = []
 
     # Find the indices of all the remaining backspace occurences
     backspace_indices = np.where(np.asarray(sentence) == removal_character)[0]
@@ -1423,8 +1439,6 @@ def universal_backspace_implementer(
 
                 # This keeps the error and adds the indicator character right after
                 errorful_sequence_and_backspaces = range_extend(group)
-                # This is the new timestamp to match the below indicator
-                indicator_timestamps.append(errorful_sequence_and_backspaces[1])
                 # This invokes the n-1 backspaces
                 indicator_indices.extend(errorful_sequence_and_backspaces[1:-1])
     else:
@@ -1432,11 +1446,9 @@ def universal_backspace_implementer(
 
     # Filter out negative indices which are non-sensical for deletion (arises when more backspaces than characters in beginning of sentence)
     indicator_indices = list(filter(lambda x: x >= 0, indicator_indices))
-    indicator_timestamps = list(filter(lambda x: x >= 0, indicator_timestamps))
 
     # Filter out deletion indices which appear at the end of the sentence as part of a contiguous group of backspaces
     indicator_indices = list(filter(lambda x: x < len(original_sentence), indicator_indices))
-    indicator_timestamps = list(filter(lambda x: x < len(original_sentence), indicator_timestamps))
 
     # Delete at indicator coordinates
     invoked_sentence = np.delete(sentence, indicator_indices).tolist()
@@ -1448,7 +1460,7 @@ def universal_backspace_implementer(
         print("Original sentence: {}\n".format(original_sentence))
         print("Edited sentence: {} \n -----".format(invoked_sentence))
 
-    return invoked_sentence, indicator_indices, indicator_timestamps
+    return invoked_sentence, indicator_indices
 
 
 def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame) -> pd.DataFrame:
@@ -1536,18 +1548,14 @@ def create_MJFF_dataset(
             names=["participant_id", "ID", "attempt", "diagnosis"],
         )
         df = pd.read_csv(data_root / "raw" / "EnglishData-duplicateeventsremoved.csv")
-
         # Select which attempt we are interested in, only English has attempts
         df = select_attempt(df, df_meta, attempt=attempt)
-
     elif language == "spanish":
-
         # Load raw text and meta data
         df = pd.read_csv(data_root / "raw" / "SpanishData-Nov_28_2019.csv")
         df_meta = pd.read_csv(data_root / "raw" / "SpanishDiagnosisAndMedicationInfo.csv", header=0)
         # 'correct' Spanish characters
         df = create_proper_spanish_letters(df)
-
     else:
         raise ValueError
 

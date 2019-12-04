@@ -20,7 +20,7 @@ config.gpu_options.allow_growth = True
 set_session(tf.Session(config=config))
 
 import haberrspd.charCNN.globals  # Global params live here
-from haberrspd.charCNN.data_utils_tf import create_training_data_keras, size_of_optimisation_space
+from haberrspd.charCNN.data_utilities import create_training_data_keras, size_of_optimisation_space
 from haberrspd.charCNN.models_tf import char_cnn_model_talos
 
 
