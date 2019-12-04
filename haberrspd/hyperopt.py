@@ -31,7 +31,7 @@ parser.add_argument("-which_dataset", type=str, default="mjff", help="Select whi
 parser.add_argument(
     "-dataset",
     type=str,
-    default="EnglishData-preprocessed.csv",
+    default="EnglishData-preprocessed_attempt_1.csv",
     help="Dataset to use for hyperparam optimisation [default is EnglishData-preprocessed.csv i.e. time + char information.]",
 )
 parser.add_argument(

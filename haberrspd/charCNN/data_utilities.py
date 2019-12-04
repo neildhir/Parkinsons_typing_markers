@@ -1,15 +1,18 @@
 import itertools
+from typing import Tuple
 
 import keras.backend as K
 from keras import callbacks
 from keras.preprocessing.sequence import pad_sequences
 from keras.preprocessing.text import Tokenizer
 from keras.utils import to_categorical
-from numpy import argwhere, array, dstack, einsum, hstack, int64, ones, pad, matrix
+from numpy import argwhere, array, concatenate, dstack, einsum, empty, hstack, int64, matrix, ones, pad
 from pandas import read_csv
 from sklearn.model_selection import train_test_split
-from tensorflow import cast, float32, one_hot
 from sklearn.preprocessing import OneHotEncoder
+from tensorflow import cast, float32, one_hot
+
+from haberrspd.preprocess import modifier_key_replacements
 
 
 def size_of_optimisation_space(params):
@@ -164,7 +167,7 @@ def create_training_data(DATA_ROOT, data_string, which_level="sentence"):
         raise ValueError
 
 
-def create_training_data_keras(DATA_ROOT, which_information, data_file):
+def create_training_data_keras(DATA_ROOT, which_information, data_file, feat_type=None):
     """
     This function creats one-hot encoded character -data for the document (=subject)
     classification model, as well as the sentence classification model. The functionality
@@ -188,9 +191,9 @@ def create_training_data_keras(DATA_ROOT, which_information, data_file):
 
     if which_information == "char_time_space":
         # Get relevant long-format data
-        df = read_csv(DATA_ROOT / "char_time" / data_file, header=0)  # MJFF data
+        df = read_csv(DATA_ROOT / "char_time" / data_file, header=0)
     else:
-        df = read_csv(DATA_ROOT / which_information / data_file, header=0)  # MJFF data
+        df = read_csv(DATA_ROOT / which_information / data_file, header=0)
 
     subject_documents, subjects_diagnoses, alphabet = create_mjff_data_objects(df)
 
@@ -220,7 +223,7 @@ def create_training_data_keras(DATA_ROOT, which_information, data_file):
     tk.word_index = alphabet_indices
 
     # Classification by "document" i.e. all sentences, per candidate, are collated into a bag called a document
-    if feat_type == "doc":
+    if feat_type:
         raise NotImplementedError
         # If we are using document features
         X = []
@@ -241,12 +244,22 @@ def create_training_data_keras(DATA_ROOT, which_information, data_file):
 
     if which_information == "char_time_space":
         # Load relevant keyboard
-        # TODO: fix this to reflect the difference in keyboard for MJFF and MRC
-        keyboard = us_standard_layout_keyboard()  # OBS: nested list
-        # Check that all chars are in fact in our "keyboard" -- if not, we cannot map a coordinate
-        assert alphabet.issubset(set(list(itertools.chain.from_iterable(keyboard))))
-        # TODO: fix this to reflect the difference in keyboard for MJFF and MRC
-        space = [english_keys_to_2d_coordinates_mjff(sentence, keyboard) for sentence in all_sentences]
+        if "MJFF" in str(DATA_ROOT):
+            keyboard = uk_standard_layout_keyboard()  # OBS: nested list
+            # Check that all chars are in fact in our "keyboard" -- if not, we cannot map a coordinate
+            assert alphabet.issubset(set(list(itertools.chain.from_iterable(keyboard))))
+            space = [uk_keyboard_keys_to_2d_coordinates_mjff(sentence, keyboard) for sentence in all_sentences]
+
+        elif "MRC" in str(DATA_ROOT):
+            keyboard_lower, keyboard_upper = us_keyboard_mrc()
+            # Check that all chars are in fact in our "keyboard" -- if not, we cannot map a coordinate
+            assert alphabet.issubset(set(itertools.chain.from_iterable(concatenate([keyboard_lower, keyboard_upper]))))
+            # Remember that we have replaced modifier keys with greek symbols
+            space = [us_keyboard_keys_to_2d_coordinates_mrc(sentence, keyboard) for sentence in all_sentences]
+
+        else:
+            raise ValueError
+
         space_padded = [pad(s, [(0, max_sentence_length - len(s)), (0, 0)], mode="constant") for s in space]
         # Append coordinates to one-hot encoded sentences
         X = einsum("ijk->kij", dstack([hstack((x, s)) for (x, s) in zip(X, space_padded)]))
@@ -260,7 +273,7 @@ def create_training_data_keras(DATA_ROOT, which_information, data_file):
     return X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size
 
 
-def us_standard_layout_keyboard():
+def uk_standard_layout_keyboard():
     """
     Keyboard layout used for the MJFF data.
 
@@ -279,7 +292,7 @@ def us_standard_layout_keyboard():
         [description]
     """
 
-    # TODO: This needs to be changed to reflect the same keyboard as the MRC one (See below)
+    # TODO: This needs to be changed to reflect the fact that it is actually a UK keyboard as the MRC one (See below)
     raise ValueError
 
     # Lower caps
@@ -298,7 +311,7 @@ def us_standard_layout_keyboard():
     return keyboard
 
 
-def english_keys_to_2d_coordinates_mjff(typed_sentence, keyboard):
+def uk_keyboard_keys_to_2d_coordinates_mjff(typed_sentence, keyboard):
     """
     Function returns the 2D coordinates of the characters in the sentence.
 
@@ -328,7 +341,9 @@ def english_keys_to_2d_coordinates_mjff(typed_sentence, keyboard):
     return array(coordinates)
 
 
-def english_keys_to_2d_coordinates_mrc(typed_sentence, typed_key_locations, english_lower, english_upper) -> array:
+def us_keyboard_keys_to_2d_coordinates_mrc(
+    typed_sentence, typed_key_locations, lower_keyboard, upper_keyboard
+) -> array:
     """
     Function returns the 2D coordinates of the characters in the sentence.
 
@@ -351,30 +366,31 @@ def english_keys_to_2d_coordinates_mrc(typed_sentence, typed_key_locations, engl
         Returns an area of the coordinates used to produce the passed sentence
     """
 
-    assert "Backspace" not in english_lower or english_upper
+    modifier_keys = modifier_key_replacements()  # A dictionary
     assert len(typed_sentence) > 1
     assert len(typed_key_locations) > 1
 
-    modifier_keys = ["Shift", "Control", "Meta", "Alt"]
     cords = []
     for char, char_loc in zip(typed_sentence, typed_key_locations):
-        if char in english_lower:
+        if char in lower_keyboard:
             # Lower caps
 
             # Special characters which appear twice on the keyboard
-            if char in modifier_keys:
+            if char in modifier_keys.values():
                 cords.append(
                     tuple(
-                        [argwhere(english_lower == char)[0] if char_loc <= 1 else argwhere(english_lower == char)[1]][0]
+                        [argwhere(lower_keyboard == char)[0] if char_loc <= 1 else argwhere(lower_keyboard == char)[1]][
+                            0
+                        ]
                     )
                 )
             else:
                 # Normal characters
-                cords.append(tuple(argwhere(english_lower == char)[0]))
+                cords.append(tuple(argwhere(lower_keyboard == char)[0]))
 
-        elif char in english_upper:
-            # Upper caps characters
-            cords.append(tuple(argwhere(english_upper == char)[0]))
+        elif char in upper_keyboard:
+            # Upper caps characters (also includes special keys such as '#')
+            cords.append(tuple(argwhere(upper_keyboard == char)[0]))
 
         else:
             # all chars not in the keyboard are mapped to the UNK character
@@ -385,26 +401,26 @@ def english_keys_to_2d_coordinates_mrc(typed_sentence, typed_key_locations, engl
     return array(cords)
 
 
-def us_english_keyboard_mrc():
+def us_keyboard_mrc(use_replacement_modifier_symbols=True) -> Tuple[matrix, matrix]:
     """
-    QWERTY keyboard used for the MRC data collection.
+    [lower-case] QWERTY keyboard used for the MRC data collection.
 
     Note that this keyboard contains modifier keys (such as 'Shift').
     """
 
     # Lower case
-    english_lower = matrix(
+    us_lower = array(
         [
             [u"`", u"1", u"2", u"3", u"4", u"5", u"6", u"7", u"8", u"9", u"0", u"-", u"=", None],
-            [u"Tab", u"q", u"w", u"e", u"r", u"t", u"y", u"u", u"i", u"o", u"p", "[", "]", "\\"],
-            [u"CapsLock", u"a", u"s", u"d", u"f", u"g", u"h", u"j", u"k", u"l", u";", u"'", None, None],
-            [u"Shift", u"z", u"x", u"c", u"v", u"b", u"n", u"m", u",", u".", u"/", u"Shift", None, None],
-            [u"Control", u"Meta", u"Alt", u" ", u" ", u" ", u" ", u" ", u"Alt", u"Meta", None, u"Control", None, None],
+            [u"tab", u"q", u"w", u"e", u"r", u"t", u"y", u"u", u"i", u"o", u"p", "[", "]", "\\"],
+            [u"capslock", u"a", u"s", u"d", u"f", u"g", u"h", u"j", u"k", u"l", u";", u"'", None, None],
+            [u"shift", u"z", u"x", u"c", u"v", u"b", u"n", u"m", u",", u".", u"/", u"shift", None, None],
+            [u"control", u"meta", u"alt", u" ", u" ", u" ", u" ", u" ", u"alt", u"meta", None, u"control", None, None],
         ],
         dtype="U",
     )
     # Upper case
-    english_upper = matrix(
+    us_upper = array(
         [
             [u"~", u"!", u"@", u"#", u"$", u"%", u"^", u"&", u"*", u"(", u")", u"_", u"+", None],
             [None, u"Q", u"W", u"E", u"R", u"T", u"Y", u"U", u"I", u"O", u"P", u"{", u"}", u"|"],
@@ -415,7 +431,27 @@ def us_english_keyboard_mrc():
         dtype="U",
     )
 
-    return english_lower, english_upper
+    if use_replacement_modifier_symbols:
+        # Get global dict
+        mod_dict = modifier_key_replacements()
+        for i in range(us_lower.shape[0]):
+            if any([key in us_lower[i, :] for key in mod_dict.keys()]):
+                for j, item in enumerate(us_lower[i, :]):
+                    if item in mod_dict.keys():
+                        us_lower[i, j] = mod_dict[item]
+
+    return us_lower, us_upper
+
+
+def getval_array(d):
+    v = array(list(d.values()))
+    k = array(list(d.keys()))
+    maxv = k.max()
+    minv = k.min()
+    n = maxv - minv + 1
+    val = empty(n, dtype=v.dtype)
+    val[k] = v
+    return val
 
 
 def bmatrix_from_str(list_of_chars, list_of_ikis=None):

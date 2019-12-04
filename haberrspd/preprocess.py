@@ -187,7 +187,7 @@ def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1, drop_shi
     return final
 
 
-def process_mrc(df: pd.DataFrame) -> pd.DataFrame:
+def process_mrc(df: pd.DataFrame, unk_symbol="£") -> pd.DataFrame:
     """
     Function provides the heavy lifting in cleaning the MRC dataset.
 
@@ -236,7 +236,7 @@ def process_mrc(df: pd.DataFrame) -> pd.DataFrame:
             "Process",
             "Unidentified",
         ],
-        "£",  # We use a pound-sign because Americans don't have this symbol on their keyboards.
+        unk_symbol,  # We use a pound-sign because Americans don't have this symbol on their keyboards.
         inplace=True,
     )
 
@@ -244,16 +244,8 @@ def process_mrc(df: pd.DataFrame) -> pd.DataFrame:
     df.key = df.key.str.lower()
 
     # For keys of char length > 1, we replace them with a special symbols with len() == 1
-    char_replace_dict = {
-        "backspace": "α",
-        "shift": "β",
-        "control": "γ",
-        "capslock": "δ",
-        "meta": "ε",
-        "tab": "ζ",
-        "alt": "η",
-    }
-    df.replace({"key": char_replace_dict}, inplace=True)
+    modifier_key_replacement_dict = modifier_key_replacements()
+    df.replace({"key": modifier_key_replacement_dict}, inplace=True)
 
     # Add a medication column to tell if they are on medication or not
     assign_medication_column(df)
@@ -265,6 +257,10 @@ def process_mrc(df: pd.DataFrame) -> pd.DataFrame:
     return df[
         ["key", "type", "location", "timestamp", "participant_id", "sentence_id", "diagnosis", "medication"]
     ].reset_index(drop=True)
+
+
+def modifier_key_replacements() -> dict:
+    return {"backspace": "α", "shift": "β", "control": "γ", "capslock": "δ", "meta": "ε", "tab": "ζ", "alt": "η"}
 
 
 def assign_medication_column(df):
@@ -359,8 +355,8 @@ def remove_solitary_key_presses(df, verbose=False):
             # Find all keys which appear an unequal number of times
             suspect_keys.append(key)
 
-    # Do not remove "correction identifier key" i.e. €
-    suspect_keys = [key for key in suspect_keys if key not in {"€", "α"}]
+    # Do not remove "correction identifier key" i.e. ω
+    suspect_keys = [key for key in suspect_keys if key not in {"ω", "α"}]
 
     if verbose:
         print(suspect_keys)
@@ -529,9 +525,9 @@ def backspace_implementer_mrc(df: pd.DataFrame, backspace_char="α"):
         # We replace these inline so we don't have to do it later
         elif len(g) == 2:
             # Place indicators [keydown]
-            df.loc[g[0], "key"] = "€"
+            df.loc[g[0], "key"] = "ω"
             # Place indicators [keyup]
-            df.loc[g[1], "key"] = "€"
+            df.loc[g[1], "key"] = "ω"
 
     if remove:
         # In-place droppping of rows with only one backspace
@@ -564,17 +560,17 @@ def backspace_implementer_mrc(df: pd.DataFrame, backspace_char="α"):
                 gg = list(filter(lambda x: x >= 0, gg))
                 indices_to_remove.extend(gg[1:-1])
                 # Place indicators [keydown]
-                df.loc[gg[0], "key"] = "€"
+                df.loc[gg[0], "key"] = "ω"
             else:
                 indices_to_remove.extend(gg[3:-1])
                 # Place indicators [keydown]
-                df.loc[gg[2], "key"] = "€"
+                df.loc[gg[2], "key"] = "ω"
 
             # Place indicators [keyup]
             # Given a value of keydown timestamp (z), select a row in the keyup df
             # where timestamp is closest to z.
             keyup_timestamp = df_keyup.loc[(df_keyup["timestamp"] >= df.loc[gg[-1], "timestamp"])].timestamp.values[0]
-            df.loc[gg[-1], ("key", "timestamp", "type")] = ["€", keyup_timestamp, "keyup"]
+            df.loc[gg[-1], ("key", "timestamp", "type")] = ["ω", keyup_timestamp, "keyup"]
 
         # In-place operation, no need to return anything. Cannot reset index at this point.
         df.drop(df.index[indices_to_remove], inplace=True)
@@ -583,7 +579,7 @@ def backspace_implementer_mrc(df: pd.DataFrame, backspace_char="α"):
         df.reset_index(drop=True, inplace=True)
 
         # Check that the indicators appear in the right places
-        indicator_indices = df.index[(df.key == "€")].tolist()
+        indicator_indices = df.index[(df.key == "ω")].tolist()
         for pair in list(zip(indicator_indices, indicator_indices[1:]))[::2]:
             assert pair[1] - pair[0] == 1, indicator_indices
         assert backspace_char not in df.key.tolist()
@@ -1116,7 +1112,7 @@ def make_long_format_sentence(ikis, characters, time_redux_fact=10) -> str:
         ikis[np.where(ikis[1:] < 1.0)[0] + 1] = 1.0
 
     # Errorful indicators are only repeated once
-    indicator_indices = np.where(np.array(characters) == "€")[0]
+    indicator_indices = np.where(np.array(characters) == "ω")[0]
     if any(indicator_indices == len(characters) - 1):
         # Catches any indicators that appear at the end of a sentence
         indicator_indices = np.delete(indicator_indices, np.argwhere(indicator_indices == len(characters) - 1)) + 1
@@ -1362,7 +1358,7 @@ def remove_leading_backspaces(x, removal_character):
 
 
 def universal_backspace_implementer(
-    sentence: list, removal_character="backspace", invokation_type=1, verbose: bool = False, indicator_character="€"
+    sentence: list, removal_character="backspace", invokation_type=1, verbose: bool = False, indicator_character="ω"
 ) -> Tuple[list, list]:
     """
     Method corrects the sentence by logically acting on the backspaces invoked by the
