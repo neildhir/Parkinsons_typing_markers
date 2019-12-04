@@ -254,6 +254,8 @@ def create_training_data_keras(DATA_ROOT, which_information, data_file, feat_typ
             keyboard_lower, keyboard_upper = us_keyboard_mrc()
             # Check that all chars are in fact in our "keyboard" -- if not, we cannot map a coordinate
             assert alphabet.issubset(set(itertools.chain.from_iterable(concatenate([keyboard_lower, keyboard_upper]))))
+
+            # TODO:
             # Remember that we have replaced modifier keys with greek symbols
             space = [us_keyboard_keys_to_2d_coordinates_mrc(sentence, keyboard) for sentence in all_sentences]
 
@@ -369,36 +371,37 @@ def us_keyboard_keys_to_2d_coordinates_mrc(
     modifier_keys = modifier_key_replacements()  # A dictionary
     assert len(typed_sentence) > 1
     assert len(typed_key_locations) > 1
+    assert len(typed_sentence) == len(typed_key_locations)
 
-    cords = []
-    for char, char_loc in zip(typed_sentence, typed_key_locations):
+    all_coordinates = []
+    for char, char_location in zip(typed_sentence, typed_key_locations):
+        # Lower caps
         if char in lower_keyboard:
-            # Lower caps
-
             # Special characters which appear twice on the keyboard
             if char in modifier_keys.values():
-                cords.append(
+                all_coordinates.append(
                     tuple(
-                        [argwhere(lower_keyboard == char)[0] if char_loc <= 1 else argwhere(lower_keyboard == char)[1]][
-                            0
-                        ]
+                        [
+                            argwhere(lower_keyboard == char)[0]
+                            if int(char_location) <= 1
+                            else argwhere(lower_keyboard == char)[1]
+                        ][0]
                     )
                 )
             else:
                 # Normal characters
-                cords.append(tuple(argwhere(lower_keyboard == char)[0]))
-
+                all_coordinates.append(tuple(argwhere(lower_keyboard == char)[0]))
         elif char in upper_keyboard:
             # Upper caps characters (also includes special keys such as '#')
-            cords.append(tuple(argwhere(upper_keyboard == char)[0]))
-
+            all_coordinates.append(tuple(argwhere(upper_keyboard == char)[0]))
         else:
             # all chars not in the keyboard are mapped to the UNK character
-            cords.append((3, 7))
+            # this includes the error-indicator ω (omega)
+            all_coordinates.append((3, 7))
 
-    assert None not in cords
+    assert None not in all_coordinates
 
-    return array(cords)
+    return array(all_coordinates)
 
 
 def us_keyboard_mrc(use_replacement_modifier_symbols=True) -> Tuple[matrix, matrix]:

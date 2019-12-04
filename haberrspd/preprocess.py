@@ -175,13 +175,19 @@ def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1, drop_shi
 
     if include_time:
         # Creates long sequences with characters repeated for IKI number of steps
-        sentence_dictionary = create_char_iki_extended_data(df, backspace_char=backspace_char, invokation_type=1)
+        sentence_dictionary, location_dictionary = create_char_iki_extended_data(
+            df, backspace_char=backspace_char, invokation_type=1
+        )
     else:
         # This option _only_ includes the characters.
-        sentence_dictionary = create_char_data(df, backspace_char=backspace_char, invokation_type=invokation_type)
+        sentence_dictionary, location_dictionary = create_char_data(
+            df, backspace_char=backspace_char, invokation_type=invokation_type
+        )
 
     # Final formatting of typing data (note that df contains the diagnosis here)
-    final = create_dataframe_from_processed_data(sentence_dictionary, df).reset_index(drop=True)
+    final = create_dataframe_from_processed_data_mrc(sentence_dictionary, location_dictionary, df).reset_index(
+        drop=True
+    )
 
     # Return the empirical data and the reference sentences for downstream tasks
     return final
@@ -957,6 +963,7 @@ def create_char_iki_extended_data(
 
     # All sentences will be stored here, indexed by their type
     long_format_sentences = defaultdict(dict)
+    long_format_locations = defaultdict(dict)
 
     # Corrected inter-key-intervals (i.e. timestamp difference / delta)
     corrected_inter_key_intervals, iki_replacement_stats = iki_pause_correction(
@@ -998,7 +1005,7 @@ def create_char_iki_extended_data(
 
             # Make long-format version of each typed, corrected, sentence
             # Note that we remove the first character to make the calculation correct.
-            long_format_sentences[subject][sentence] = make_long_format_sentence(
+            long_format_sentences[subject][sentence], ikis = make_long_format_sentence(
                 inter_key_intervals, corrected_sentence, time_redux_fact
             )
             # Sanity check
@@ -1013,7 +1020,21 @@ def create_char_iki_extended_data(
                 inter_key_intervals,
             )
 
-    return long_format_sentences
+            if "location" in df.columns:
+                # Get the key location [only for MRC dataset]
+                keyboard_locs = df.loc[coordinates, "location"].values
+                keyboard_locs = np.delete(keyboard_locs, character_indices_to_delete)
+                out = list(chain.from_iterable([[i] * int(n) for i, n in zip(keyboard_locs[:-1], ikis[1:])]))
+                assert len(out) == len(long_format_sentences[subject][sentence])
+                long_format_locations[subject][sentence] = convert(out)
+
+    return long_format_sentences, long_format_locations
+
+
+def convert(a):
+    # Converting integer list to string list
+    # and joining the list using join()
+    return "".join(map(str, a))
 
 
 def create_char_data(
@@ -1049,6 +1070,7 @@ def create_char_data(
 
     # All sentences will be stored here, indexed by their type
     character_only_sentences = defaultdict(dict)
+    locations = defaultdict(dict)
 
     # Loop over subjects
     for subject in subjects:
@@ -1059,7 +1081,7 @@ def create_char_data(
             coordinates = (df.participant_id == subject) & (df.sentence_id == sentence)
 
             # "correct" the sentence by operating on user backspaces
-            corrected_sentence, _ = universal_backspace_implementer(
+            corrected_sentence, character_indices_to_delete = universal_backspace_implementer(
                 df.loc[coordinates, "key"].tolist(), removal_character=backspace_char, invokation_type=invokation_type
             )
 
@@ -1070,7 +1092,14 @@ def create_char_data(
             # Note that sentences are lower-cased here
             character_only_sentences[subject][sentence] = "".join(corrected_sentence).lower()
 
-    return character_only_sentences
+            if "location" in df.columns:
+                # Get the key location [only for MRC dataset]
+                keyboard_locs = df.loc[coordinates, "location"].values
+                keyboard_locs = np.delete(keyboard_locs, character_indices_to_delete)
+                assert len(keyboard_locs) == len(character_only_sentences[subject][sentence])
+                locations[subject][sentence] = convert(keyboard_locs)
+
+    return character_only_sentences, locations
 
 
 def flatten(my_list):
@@ -1125,7 +1154,7 @@ def make_long_format_sentence(ikis, characters, time_redux_fact=10) -> str:
         print(characters)
 
     # Notice that we make each sentence lower-case
-    return "".join([c * int(n) for c, n in zip(characters[:-1], ikis[1:])]).lower()
+    return "".join([c * int(n) for c, n in zip(characters[:-1], ikis[1:])]).lower(), ikis
 
 
 def measure_levensthein_for_lang8_data(data_address: str, ld_threshold: int = 2) -> pd.DataFrame:
@@ -1507,6 +1536,55 @@ def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame) -
     return df
 
 
+def create_dataframe_from_processed_data_mrc(my_dict: dict, location_dict: dict, df_meta: pd.DataFrame) -> pd.DataFrame:
+    """
+    Function creates a pandas DataFrame which will be used by the NLP model
+    downstream.
+
+    Parameters
+    ----------
+    my_dict : dict
+        Dictionary containing all the preprocessed typed sentences, indexed by subject
+    df_meta : Pandas DataFrame
+        Contains the mete information on each patient (for the MRC this is the main dataframe)
+
+    Returns
+    -------
+    Pandas DataFrame
+        Returns the compiled dataframe from all subjects.
+    """
+
+    assert "diagnosis" in df_meta.columns
+
+    final_out = []
+    for participant_id in my_dict.keys():
+        final_out.append(
+            pd.DataFrame(
+                [
+                    [
+                        participant_id,
+                        int(df_meta.loc[df_meta.participant_id == participant_id, "diagnosis"].unique()),
+                        str(sent_id),
+                        str(my_dict[participant_id][sent_id]),
+                        location_dict[participant_id][sent_id],
+                    ]
+                    for sent_id in my_dict[participant_id].keys()
+                ]
+            )
+        )
+    df = pd.concat(final_out, axis=0)
+    df.columns = ["Patient_ID", "Diagnosis", "Sentence_ID", "Preprocessed_typed_sentence", "Preprocessed_locations"]
+
+    # Final check for empty values
+    df["Preprocessed_typed_sentence"].replace("", np.nan, inplace=True)
+    # Remove all such rows
+    df.dropna(subset=["Preprocessed_typed_sentence"], inplace=True)
+    # Final check to ensure that the last column is a string
+    df = df.astype({"Preprocessed_typed_sentence": str})
+
+    return df
+
+
 def remap_English_MJFF_participant_ids(df):
     replacement_ids = {}
     for the_str in set(df.Patient_ID):
@@ -1560,10 +1638,10 @@ def create_MJFF_dataset(
 
     if include_time:
         # Creates long sequences with characters repeated for IKI number of steps
-        out = create_char_iki_extended_data(df)
+        out, _ = create_char_iki_extended_data(df)
     else:
         # This option _only_ includes the characters.
-        out = create_char_data(df, invokation_type=invokation_type)
+        out, _ = create_char_data(df, invokation_type=invokation_type)
 
     # Final formatting of typing data
     df = create_dataframe_from_processed_data(out, df_meta).reset_index(drop=True)
