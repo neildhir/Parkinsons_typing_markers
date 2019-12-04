@@ -374,6 +374,7 @@ def us_keyboard_keys_to_2d_coordinates_mrc(
     assert len(typed_sentence) == len(typed_key_locations)
 
     all_coordinates = []
+    typed_key_locations = list(map(int, typed_key_locations))
     for char, char_location in zip(typed_sentence, typed_key_locations):
         # Lower caps
         if char in lower_keyboard:
@@ -383,7 +384,7 @@ def us_keyboard_keys_to_2d_coordinates_mrc(
                     tuple(
                         [
                             argwhere(lower_keyboard == char)[0]
-                            if int(char_location) <= 1
+                            if char_location <= 1
                             else argwhere(lower_keyboard == char)[1]
                         ][0]
                     )
