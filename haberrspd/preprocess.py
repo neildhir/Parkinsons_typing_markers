@@ -982,18 +982,12 @@ def create_char_iki_extended_data(
                 df.loc[coordinates, "key"].tolist(), removal_character=backspace_char, invokation_type=invokation_type
             )
 
+            # Need to respect the lower limit on the sentence length
             if len(corrected_sentence) < char_count_response_threshold:
                 continue
 
-            # Sanity check
-            assert (
-                len(corrected_sentence) > char_count_response_threshold
-            ), "Subject: {} and sentence: {} \nwith sentence text: {}".format(subject, sentence, corrected_sentence)
-
-            # Get length of corrected IKI sequence
-            L = len(corrected_inter_key_intervals[sentence][subject])
-
             # Check consistency
+            L = len(corrected_inter_key_intervals[sentence][subject])
             assert set(removed_character_indices).issubset(
                 range(L)
             ), "Indices to remove: {} -- total length of timestamp vector: {}".format(removed_character_indices, L)
@@ -1393,6 +1387,8 @@ def universal_backspace_implementer(
 
     # Coordinates which will be replaced by an error-implementation indicator
     indicator_indices = []
+    # Timestamps to replace the indicator timestamp once backspace sequence is implemented
+    indicator_timestamps = []
 
     # Find the indices of all the remaining backspace occurences
     backspace_indices = np.where(np.asarray(sentence) == removal_character)[0]
@@ -1428,16 +1424,19 @@ def universal_backspace_implementer(
                 # This keeps the error and adds the indicator character right after
                 errorful_sequence_and_backspaces = range_extend(group)
                 # This is the new timestamp to match the below indicator
-                index_of_first_timestamp_of_remove_sequence = errorful_sequence_and_backspaces[1]
-                indicator_indices.extend(errorful_sequence_and_backspaces[1:-1])  # This invokes the n-1 backspaces
+                indicator_timestamps.append(errorful_sequence_and_backspaces[1])
+                # This invokes the n-1 backspaces
+                indicator_indices.extend(errorful_sequence_and_backspaces[1:-1])
     else:
         raise ValueError
 
     # Filter out negative indices which are non-sensical for deletion (arises when more backspaces than characters in beginning of sentence)
     indicator_indices = list(filter(lambda x: x >= 0, indicator_indices))
+    indicator_timestamps = list(filter(lambda x: x >= 0, indicator_timestamps))
 
     # Filter out deletion indices which appear at the end of the sentence as part of a contiguous group of backspaces
     indicator_indices = list(filter(lambda x: x < len(original_sentence), indicator_indices))
+    indicator_timestamps = list(filter(lambda x: x < len(original_sentence), indicator_timestamps))
 
     # Delete at indicator coordinates
     invoked_sentence = np.delete(sentence, indicator_indices).tolist()
@@ -1449,7 +1448,7 @@ def universal_backspace_implementer(
         print("Original sentence: {}\n".format(original_sentence))
         print("Edited sentence: {} \n -----".format(invoked_sentence))
 
-    return invoked_sentence, indicator_indices
+    return invoked_sentence, indicator_indices, indicator_timestamps
 
 
 def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame) -> pd.DataFrame:
