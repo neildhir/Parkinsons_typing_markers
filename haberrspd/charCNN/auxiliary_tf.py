@@ -1,8 +1,4 @@
-from keras.layers import (Conv1D,
-                          Dense,
-                          GlobalMaxPool1D,
-                          MaxPooling1D,
-                          Dropout)
+from keras.layers import Conv1D, Dense, GlobalMaxPool1D, MaxPooling1D, Dropout
 
 # =============
 # MODEL BLOCKS
@@ -37,21 +33,23 @@ def character_dense_dropout_block(flattened, units, dropout_rates, **params):
         # Assign appropriate activation function for dense layers
         if units:
             # List is not empty
-            activation_func = params['dense_activation']
+            activation_func = params["dense_activation"]
         elif not units:
             # List is empty, alas we have reached the end of it and switch activation
-            activation_func = params['last_activation']
+            activation_func = params["last_activation"]
 
         # Dense
-        flattened = Dense(unit,
-                          kernel_initializer=params['dense_kernel_initializer'],
-                          bias_initializer=params['dense_bias_initializer'],
-                          activation=activation_func)(flattened)
+        flattened = Dense(
+            unit,
+            kernel_initializer=params["dense_kernel_initializer"],
+            bias_initializer=params["dense_bias_initializer"],
+            activation=activation_func,
+        )(flattened)
 
         # Dropout
         if dropout_rates[j]:
             # Only enters this logic if the entry is != None
-            flattened = Dropout(dropout_rates[j])(flattened)
+            flattened = Dropout(rate=dropout_rates[j])(flattened)
 
         # Increment index counter
         j += 1
@@ -59,11 +57,7 @@ def character_dense_dropout_block(flattened, units, dropout_rates, **params):
     return flattened
 
 
-def character_1D_convolution_maxpool_block_v2(embedded,
-                                              nb_filters,
-                                              filter_lengths,
-                                              pool_lengths,
-                                              **params: dict):
+def character_1D_convolution_maxpool_block_v2(embedded, nb_filters, filter_lengths, pool_lengths, **params: dict):
     """
     To be used with char_cnn_model() from Zhang et al.'s paper.
 
@@ -90,12 +84,14 @@ def character_1D_convolution_maxpool_block_v2(embedded,
     for i in range(len(nb_filters)):
 
         # Convolution
-        embedded = Conv1D(filters=nb_filters[i],
-                          kernel_size=filter_lengths[i],
-                          padding=params['conv_padding'],
-                          kernel_initializer=params['conv_kernel_initializer'],
-                          bias_initializer=params['conv_bias_initializer'],
-                          activation=params['conv_activation'])(embedded)
+        embedded = Conv1D(
+            filters=nb_filters[i],
+            kernel_size=filter_lengths[i],
+            padding=params["conv_padding"],
+            kernel_initializer=params["conv_kernel_initializer"],
+            bias_initializer=params["conv_bias_initializer"],
+            activation=params["conv_activation"],
+        )(embedded)
 
         # Max pooling
         if pool_lengths[i]:
@@ -104,23 +100,23 @@ def character_1D_convolution_maxpool_block_v2(embedded,
     return embedded
 
 
-def character_1D_convolution_block(embedded,
-                                   nb_filter=(32, 64),
-                                   filter_length=(3, 3),
-                                   subsample=(2, 1),
-                                   pool_length=(2, 2)):
+def character_1D_convolution_block(
+    embedded, nb_filter=(32, 64), filter_length=(3, 3), subsample=(2, 1), pool_length=(2, 2)
+):
 
     assert len(nb_filter) == len(filter_length) == len(subsample) == len(pool_length)
 
     # Create multiple filters on the fly
     for i in range(len(nb_filter)):
         # convolution
-        embedded = Conv1D(filters=nb_filter[i],
-                          kernel_size=filter_length[i],
-                          padding='valid',
-                          activation='relu',  # TODO: may be a more suitable activation func. here
-                          kernel_initializer='glorot_normal',
-                          strides=subsample[i])(embedded)
+        embedded = Conv1D(
+            filters=nb_filter[i],
+            kernel_size=filter_length[i],
+            padding="valid",
+            activation="relu",  # TODO: may be a more suitable activation func. here
+            kernel_initializer="glorot_normal",
+            strides=subsample[i],
+        )(embedded)
         # pooling
         if pool_length[i]:
             embedded = Dropout(0.1)(embedded)

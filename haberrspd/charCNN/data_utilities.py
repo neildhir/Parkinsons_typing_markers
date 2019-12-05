@@ -251,15 +251,21 @@ def create_training_data_keras(
     if which_information == "char_time_space":
         # Load relevant keyboard
         if "MJFF" in str(DATA_ROOT):
-            keyboard_lower, keyboard_upper = english_language_qwerty_keyboard(layout="uk")
+            if "spanish" in csv_file.lower():
+                layout = "spanish"
+            else:
+                layout = "uk"
+            keyboard_lower, keyboard_upper = english_language_qwerty_keyboard(layout=layout)
             # Check that all chars are in fact in our "keyboard" -- if not, we cannot map a coordinate
-            character_set = set(itertools.chain.from_iterable(concatenate([keyboard_lower, keyboard_upper]))).union(
-                set([indicator_character])
-            )
-            assert alphabet.issubset(character_set), (alphabet - character_set, alphabet, character_set)
+            if layout == "uk":
+                # Only relevant for UK keyboard
+                character_set = set(itertools.chain.from_iterable(concatenate([keyboard_lower, keyboard_upper]))).union(
+                    set([indicator_character])
+                )
+                assert alphabet.issubset(character_set), (alphabet - character_set, alphabet, character_set)
             # Set the coordinate space for all typed sentences
             space = [
-                uk_keyboard_keys_to_2d_coordinates_mjff(sentence, keyboard_lower, keyboard_upper)
+                uk_and_spanish_keyboard_keys_to_2d_coordinates_mjff(sentence, keyboard_lower, keyboard_upper)
                 for sentence in all_sentences
             ]
 
@@ -292,7 +298,7 @@ def create_training_data_keras(
     return X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size
 
 
-def uk_keyboard_keys_to_2d_coordinates_mjff(typed_sentence, lower_keyboard, upper_keyboard) -> array:
+def uk_and_spanish_keyboard_keys_to_2d_coordinates_mjff(typed_sentence, lower_keyboard, upper_keyboard) -> array:
     """
     Function returns the 2D coordinates of the characters in the sentence. The MJFF does not
     have any locator keys so this function is different from the parallel MRC function.
@@ -427,6 +433,32 @@ def english_language_qwerty_keyboard(
                 [None, u"Q", u"W", u"E", u"R", u"T", u"Y", u"U", u"I", u"O", u"P", u"{", u"}", None],
                 [None, u"A", u"S", u"D", u"F", u"G", u"H", u"J", u"K", u"L", u":", u"@", "~", None],
                 ["|", u"Z", u"X", u"C", u"V", u"B", u"N", u"M", u"<", u">", u"?", None, None, None],
+                [None, None, None, u" ", u" ", u" ", u" ", u" ", None, None, None, None, None, None],
+            ],
+            dtype="U",
+        )
+
+    elif layout == "spanish":
+
+        # Note this keyboard has been slightly modified to accommodate the indicator_character which signifies and erroful typing.
+
+        # Lower case
+        lower = array(
+            [
+                [u"º", u"1", u"2", u"3", u"4", u"5", u"6", u"7", u"8", u"9", u"0", u"'", "¡", indicator_character],
+                [None, u"q", u"w", u"e", u"r", u"t", u"y", u"u", u"i", u"o", u"p", u"`", u"+", None],
+                [None, u"a", u"s", u"d", u"f", u"g", u"h", u"j", u"k", u"l", u"ñ", u"‘", u"ç", None],
+                [u"<", u"z", u"x", u"c", u"v", u"b", u"n", u"m", u",", u".", u"-", None, None, None],
+                [None, None, None, u" ", u" ", u" ", u" ", u" ", None, None, None, None, None, None],
+            ],
+            dtype="U",
+        )
+        upper = array(
+            [
+                [u"ª", u"!", u'"', u"·", u"$", u"%", u"&", u"/", u"(", u")", u"=", u"?", u"¿", None],
+                [None, u"Q", u"W", u"E", u"R", u"T", u"Y", u"U", u"I", u"O", u"P", u"^", u"*", None],
+                [None, u"A", u"S", u"D", u"F", u"G", u"H", u"J", u"K", u"L", u"Ñ", u"¨", u"Ç", None],
+                [u">", u"Z", u"X", u"C", u"V", u"B", u"N", u"M", u";", u":", u"_", None, None, None],
                 [None, None, None, u" ", u" ", u" ", u" ", u" ", None, None, None, None, None, None],
             ],
             dtype="U",
