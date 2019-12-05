@@ -11,6 +11,8 @@ from pandas import read_csv
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 from tensorflow import cast, float32, one_hot
+from collections import defaultdict
+
 
 from haberrspd.preprocess import modifier_key_replacements
 
@@ -63,25 +65,32 @@ class LossHistory(callbacks.Callback):
         self.accuracies.append(logs.get("acc"))
 
 
-def create_mjff_data_objects(df):
+def create_data_objects(df):
     """
     Note that the interpretation here is that each document is comensurate with a subject
     in the dataset.
     """
     subject_documents = []  # Contains on the index all sentences typed by a particular subject
-    subject_diagnoses = []  # Contains on the index, the PD diagnosis of a particular subject
+    subject_locations = []  # Contains on the index all key locations used by a subject [MRC only]
+    subject_diagnoses = defaultdict(dict)  # Contains on the index, the PD diagnosis of a particular subject
 
-    for i in df.Patient_ID.drop_duplicates():
+    for i in df.Patient_ID.unique():
         # Ensure that all sentences are lower-case (this improves inference further down the pipe)
-        subject_documents.append(df.loc[(df.Patient_ID == i)].Preprocessed_typed_sentence.str.lower().tolist())
+        subject_documents.append(df.loc[(df.Patient_ID == i)].Preprocessed_typed_sentence.tolist())
 
-        # XXX: This returns one diagnosis per patient, but we may want one diagnosis per sentence
-        subject_diagnoses.append(df.loc[(df.Patient_ID == i)].Diagnosis.drop_duplicates().tolist()[0])
+        # This returns one diagnosis per patient
+        # subject_diagnoses.append(df.loc[(df.Patient_ID == i)].Diagnosis.drop_duplicates().tolist()[0])
+        # This returns one diagnosis per patient
+        subject_diagnoses[i] = df[(df.Patient_ID == i)].Diagnosis.tolist()
+
+        if "Preprocessed_locations" in df.columns:
+            # We are dealing with MRC data if this is true
+            subject_locations.append(df.loc[(df.Patient_ID == i)].Preprocessed_locations.tolist())
 
     # Get the unique set of characters in the alphabet
     alphabet = set("".join([item for sublist in subject_documents for item in sublist]))
 
-    return subject_documents, subject_diagnoses, alphabet
+    return subject_documents, subject_locations, subject_diagnoses, alphabet
 
 
 def create_training_data(DATA_ROOT, data_string, which_level="sentence"):
@@ -111,8 +120,8 @@ def create_training_data(DATA_ROOT, data_string, which_level="sentence"):
     assert type(data_string) is str
     assert which_level in ["sentence", "document"]
 
-    df = read_csv(DATA_ROOT / data_string, header=0)  # MJFF data
-    subject_documents, subjects_diagnoses, alphabet = create_mjff_data_objects(df)
+    df = read_csv(DATA_ROOT / data_string, header=0)
+    subject_documents, subject_locations, subjects_diagnoses, alphabet = create_data_objects(df)
 
     # Store alphabet size
     alphabet_size = len(alphabet)
@@ -167,7 +176,7 @@ def create_training_data(DATA_ROOT, data_string, which_level="sentence"):
         raise ValueError
 
 
-def create_training_data_keras(DATA_ROOT, which_information, data_file, feat_type=None):
+def create_training_data_keras(DATA_ROOT, which_information, data_file, feat_type=None, indicator_character="ω"):
     """
     This function creats one-hot encoded character -data for the document (=subject)
     classification model, as well as the sentence classification model. The functionality
@@ -195,7 +204,7 @@ def create_training_data_keras(DATA_ROOT, which_information, data_file, feat_typ
     else:
         df = read_csv(DATA_ROOT / which_information / data_file, header=0)
 
-    subject_documents, subjects_diagnoses, alphabet = create_mjff_data_objects(df)
+    subject_documents, subject_locations, subjects_diagnoses, alphabet = create_data_objects(df)
 
     # Store alphabet size
     alphabet_size = len(alphabet)
@@ -212,6 +221,7 @@ def create_training_data_keras(DATA_ROOT, which_information, data_file, feat_typ
 
     # Make training data array
     all_sentences = [item for sublist in subject_documents for item in sublist]
+    all_locations = [item for sublist in subject_locations for item in sublist]
 
     # Initialise tokenizer which maps characters to integers
     tk = Tokenizer(num_words=None, char_level=True)
@@ -247,23 +257,30 @@ def create_training_data_keras(DATA_ROOT, which_information, data_file, feat_typ
         if "MJFF" in str(DATA_ROOT):
             keyboard_lower, keyboard_upper = english_language_qwerty_keyboard(layout="uk")
             # Check that all chars are in fact in our "keyboard" -- if not, we cannot map a coordinate
-            # TODO: we need to add the indicator character to this list
-            assert alphabet.issubset(set(itertools.chain.from_iterable(concatenate([keyboard_lower, keyboard_upper]))))
-
-            # XXX: old
-            keyboard = uk_standard_layout_keyboard()  # OBS: nested list
-            # Check that all chars are in fact in our "keyboard" -- if not, we cannot map a coordinate
-            assert alphabet.issubset(set(list(itertools.chain.from_iterable(keyboard))))
-            space = [uk_keyboard_keys_to_2d_coordinates_mjff(sentence, keyboard) for sentence in all_sentences]
+            assert alphabet.issubset(
+                set(itertools.chain.from_iterable(concatenate([keyboard_lower, keyboard_upper]))).union(
+                    set([indicator_character])
+                )
+            )
+            # Set the coordinate space for all typed sentences
+            space = [
+                uk_keyboard_keys_to_2d_coordinates_mjff(sentence, keyboard_lower, keyboard_upper)
+                for sentence in all_sentences
+            ]
 
         elif "MRC" in str(DATA_ROOT):
             keyboard_lower, keyboard_upper = english_language_qwerty_keyboard(layout="us")
             # Check that all chars are in fact in our "keyboard" -- if not, we cannot map a coordinate
-            assert alphabet.issubset(set(itertools.chain.from_iterable(concatenate([keyboard_lower, keyboard_upper]))))
-
-            # TODO:
-            # Remember that we have replaced modifier keys with greek symbols
-            space = [us_keyboard_keys_to_2d_coordinates_mrc(sentence, keyboard) for sentence in all_sentences]
+            assert alphabet.issubset(
+                set(itertools.chain.from_iterable(concatenate([keyboard_lower, keyboard_upper]))).union(
+                    set([indicator_character])
+                )
+            )
+            # Set the coordinate space for all typed sentences
+            space = [
+                us_keyboard_keys_to_2d_coordinates_mrc(sentence, locations, keyboard_lower, keyboard_upper)
+                for sentence, locations in zip(all_sentences, all_locations)
+            ]
 
         else:
             raise ValueError
@@ -273,7 +290,7 @@ def create_training_data_keras(DATA_ROOT, which_information, data_file, feat_typ
         X = einsum("ijk->kij", dstack([hstack((x, s)) for (x, s) in zip(X, space_padded)]))
 
     # Get labels (diagnoses)
-    y = df.Diagnosis.tolist()
+    y = list(itertools.chain.from_iterable(subjects_diagnoses.values()))  # df.Diagnosis.tolist()
 
     # Chop up data into train and test sets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, shuffle=True)
@@ -375,7 +392,7 @@ def us_keyboard_keys_to_2d_coordinates_mrc(
             all_coordinates.append(tuple(argwhere(upper_keyboard == char)[0]))
         else:
             # all chars not in the keyboard are mapped to the UNK character
-            # this includes the error-indicator ω (omega)
+            # this includes the error-indicator ω (omega) as well as UNK symbol £
             all_coordinates.append((3, 7))
 
     assert None not in all_coordinates
