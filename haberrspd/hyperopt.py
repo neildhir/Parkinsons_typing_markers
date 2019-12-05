@@ -29,10 +29,10 @@ from haberrspd.charCNN.models_tf import char_cnn_model_talos
 parser = argparse.ArgumentParser(description="CNN text classifier.")
 parser.add_argument("-which_dataset", type=str, default="mjff", help="Select which dataset [MRC, MJFF] to analyse.")
 parser.add_argument(
-    "-dataset",
+    "-csv_file",
     type=str,
     default="EnglishData-preprocessed_attempt_1.csv",
-    help="Dataset to use for hyperparam optimisation [default is EnglishData-preprocessed.csv i.e. time + char information.]",
+    help="CSV file to use for hyperparam optimisation [default is EnglishData-preprocessed_attempt_1.csv.]",
 )
 parser.add_argument(
     "-which_information",
@@ -59,7 +59,7 @@ if args.fraction_limit:
 
 DATA_ROOT = Path("../data/") / args.which_dataset.upper() / "preproc"
 X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size = create_training_data_keras(
-    DATA_ROOT, args.which_information, args.dataset
+    DATA_ROOT, args.which_information, args.csv_file
 )
 
 # Class weights are dynamic as the data-loader is stochastic and changes with each run.

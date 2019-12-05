@@ -12,7 +12,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 from tensorflow import cast, float32, one_hot
 from collections import defaultdict
-
+from math import ceil
 
 from haberrspd.preprocess import modifier_key_replacements
 
@@ -176,7 +176,13 @@ def create_training_data(DATA_ROOT, data_string, which_level="sentence"):
         raise ValueError
 
 
-def create_training_data_keras(DATA_ROOT, which_information, data_file, feat_type=None, indicator_character="ω"):
+def roundup(x):
+    return int(ceil(x / 100.0)) * 100
+
+
+def create_training_data_keras(
+    DATA_ROOT, which_information, csv_file, feat_type=None, indicator_character="ω", mrc_unk_symbol="£"
+):
     """
     This function creats one-hot encoded character -data for the document (=subject)
     classification model, as well as the sentence classification model. The functionality
@@ -196,39 +202,30 @@ def create_training_data_keras(DATA_ROOT, which_information, data_file, feat_typ
     tuple
         Contains the training and test data as well as some parameters
     """
-    assert type(data_file) is str
+    assert type(csv_file) is str
 
     if which_information == "char_time_space":
         # Get relevant long-format data
-        df = read_csv(DATA_ROOT / "char_time" / data_file, header=0)
+        df = read_csv(DATA_ROOT / "char_time" / csv_file, header=0)
     else:
-        df = read_csv(DATA_ROOT / which_information / data_file, header=0)
+        df = read_csv(DATA_ROOT / which_information / csv_file, header=0)
 
+    # Get relevant data objects
     subject_documents, subject_locations, subjects_diagnoses, alphabet = create_data_objects(df)
-
-    # Store alphabet size
-    alphabet_size = len(alphabet)
-
-    print("Total number of characters:", alphabet_size)
-    alphabet_indices = dict((c, i) for i, c in enumerate(alphabet))
-
-    if which_information == "char_time" or which_information == "char_time_space":
-        # Rounds (up) to nearest thousand, finding the maximum sentence length over all sentences
-        max_sentence_length = round(df.Preprocessed_typed_sentence.apply(lambda x: len(x)).max(), -3)
-    if which_information == "char":
-        # Rounds (up) to nearest hundred
-        max_sentence_length = round(df.Preprocessed_typed_sentence.apply(lambda x: len(x)).max(), -2)
-
     # Make training data array
     all_sentences = [item for sublist in subject_documents for item in sublist]
     all_locations = [item for sublist in subject_locations for item in sublist]
+    # Get max sentence length
+    max_sentence_length = roundup(max([len(s) for s in all_sentences]))
+    # Store alphabet size
+    alphabet_size = len(alphabet)
+    print("Total number of characters used in all typed sentences:", alphabet_size)
+    alphabet_indices = dict((c, i) for i, c in enumerate(alphabet))
 
     # Initialise tokenizer which maps characters to integers
     tk = Tokenizer(num_words=None, char_level=True)
-
     # Fit to text: convert all chars to ints
     tk.fit_on_texts(all_sentences)
-
     # Update alphabet
     tk.word_index = alphabet_indices
 
@@ -248,7 +245,6 @@ def create_training_data_keras(DATA_ROOT, which_information, data_file, feat_typ
 
     # Get integer sequences: converts sequences of chars to sequences of ints
     int_sequences = tk.texts_to_sequences(all_sentences)
-
     # Pad sequences so that they all have the same length and then one-hot encode
     X = to_categorical(pad_sequences(int_sequences, maxlen=max_sentence_length, padding="post"))
 
@@ -257,11 +253,10 @@ def create_training_data_keras(DATA_ROOT, which_information, data_file, feat_typ
         if "MJFF" in str(DATA_ROOT):
             keyboard_lower, keyboard_upper = english_language_qwerty_keyboard(layout="uk")
             # Check that all chars are in fact in our "keyboard" -- if not, we cannot map a coordinate
-            assert alphabet.issubset(
-                set(itertools.chain.from_iterable(concatenate([keyboard_lower, keyboard_upper]))).union(
-                    set([indicator_character])
-                )
+            character_set = set(itertools.chain.from_iterable(concatenate([keyboard_lower, keyboard_upper]))).union(
+                set([indicator_character])
             )
+            assert alphabet.issubset(character_set), (alphabet - character_set, alphabet, character_set)
             # Set the coordinate space for all typed sentences
             space = [
                 uk_keyboard_keys_to_2d_coordinates_mjff(sentence, keyboard_lower, keyboard_upper)
@@ -271,11 +266,10 @@ def create_training_data_keras(DATA_ROOT, which_information, data_file, feat_typ
         elif "MRC" in str(DATA_ROOT):
             keyboard_lower, keyboard_upper = english_language_qwerty_keyboard(layout="us")
             # Check that all chars are in fact in our "keyboard" -- if not, we cannot map a coordinate
-            assert alphabet.issubset(
-                set(itertools.chain.from_iterable(concatenate([keyboard_lower, keyboard_upper]))).union(
-                    set([indicator_character])
-                )
+            character_set = set(itertools.chain.from_iterable(concatenate([keyboard_lower, keyboard_upper]))).union(
+                set([indicator_character, mrc_unk_symbol])
             )
+            assert alphabet.issubset(character_set), (alphabet - character_set, alphabet, character_set)
             # Set the coordinate space for all typed sentences
             space = [
                 us_keyboard_keys_to_2d_coordinates_mrc(sentence, locations, keyboard_lower, keyboard_upper)
@@ -292,8 +286,8 @@ def create_training_data_keras(DATA_ROOT, which_information, data_file, feat_typ
     # Get labels (diagnoses)
     y = list(itertools.chain.from_iterable(subjects_diagnoses.values()))  # df.Diagnosis.tolist()
 
-    # Chop up data into train and test sets
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, shuffle=True)
+    # [stratified] chop-up into train and test sets
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, stratify=y)
 
     return X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size
 
@@ -400,7 +394,9 @@ def us_keyboard_keys_to_2d_coordinates_mrc(
     return array(all_coordinates)
 
 
-def english_language_qwerty_keyboard(layout="us", use_replacement_modifier_symbols=True) -> Tuple[array, array]:
+def english_language_qwerty_keyboard(
+    layout="us", use_replacement_modifier_symbols=True, indicator_character="ω"
+) -> Tuple[array, array]:
     """
     [lower-case] QWERTY keyboard used for the MRC data collection.
 
@@ -416,9 +412,9 @@ def english_language_qwerty_keyboard(layout="us", use_replacement_modifier_symbo
         # Lower case
         lower = array(
             [
-                [u"`", u"1", u"2", u"3", u"4", u"5", u"6", u"7", u"8", u"9", u"0", u"-", u"=", None],
+                [u"`", u"1", u"2", u"3", u"4", u"5", u"6", u"7", u"8", u"9", u"0", u"-", u"=", indicator_character],
                 [None, u"q", u"w", u"e", u"r", u"t", u"y", u"u", u"i", u"o", u"p", "[", "]", None],
-                [None, u"a", u"s", u"d", u"f", u"g", u"h", u"j", u"k", u"l", u";", u"'", None, None],
+                [None, u"a", u"s", u"d", u"f", u"g", u"h", u"j", u"k", u"l", u";", u"'", "#", None],
                 ["\\", u"z", u"x", u"c", u"v", u"b", u"n", u"m", u",", u".", u"/", None, None, None],
                 [None, None, None, u" ", u" ", u" ", u" ", u" ", None, None, None, None, None, None],
             ],
@@ -440,7 +436,7 @@ def english_language_qwerty_keyboard(layout="us", use_replacement_modifier_symbo
         # Lower case
         lower = array(
             [
-                [u"`", u"1", u"2", u"3", u"4", u"5", u"6", u"7", u"8", u"9", u"0", u"-", u"=", None],
+                [u"`", u"1", u"2", u"3", u"4", u"5", u"6", u"7", u"8", u"9", u"0", u"-", u"=", indicator_character],
                 [u"tab", u"q", u"w", u"e", u"r", u"t", u"y", u"u", u"i", u"o", u"p", "[", "]", "\\"],
                 [u"capslock", u"a", u"s", u"d", u"f", u"g", u"h", u"j", u"k", u"l", u";", u"'", None, None],
                 [u"shift", u"z", u"x", u"c", u"v", u"b", u"n", u"m", u",", u".", u"/", u"shift", None, None],
