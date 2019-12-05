@@ -6,7 +6,7 @@ from keras import callbacks
 from keras.preprocessing.sequence import pad_sequences
 from keras.preprocessing.text import Tokenizer
 from keras.utils import to_categorical
-from numpy import argwhere, array, concatenate, dstack, einsum, empty, hstack, int64, matrix, ones, pad
+from numpy import argwhere, array, array_equal, concatenate, dstack, einsum, empty, hstack, int64, matrix, ones, pad
 from pandas import read_csv
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
@@ -245,13 +245,19 @@ def create_training_data_keras(DATA_ROOT, which_information, data_file, feat_typ
     if which_information == "char_time_space":
         # Load relevant keyboard
         if "MJFF" in str(DATA_ROOT):
+            keyboard_lower, keyboard_upper = english_language_qwerty_keyboard(layout="uk")
+            # Check that all chars are in fact in our "keyboard" -- if not, we cannot map a coordinate
+            # TODO: we need to add the indicator character to this list
+            assert alphabet.issubset(set(itertools.chain.from_iterable(concatenate([keyboard_lower, keyboard_upper]))))
+
+            # XXX: old
             keyboard = uk_standard_layout_keyboard()  # OBS: nested list
             # Check that all chars are in fact in our "keyboard" -- if not, we cannot map a coordinate
             assert alphabet.issubset(set(list(itertools.chain.from_iterable(keyboard))))
             space = [uk_keyboard_keys_to_2d_coordinates_mjff(sentence, keyboard) for sentence in all_sentences]
 
         elif "MRC" in str(DATA_ROOT):
-            keyboard_lower, keyboard_upper = us_keyboard_mrc()
+            keyboard_lower, keyboard_upper = english_language_qwerty_keyboard(layout="us")
             # Check that all chars are in fact in our "keyboard" -- if not, we cannot map a coordinate
             assert alphabet.issubset(set(itertools.chain.from_iterable(concatenate([keyboard_lower, keyboard_upper]))))
 
@@ -275,70 +281,41 @@ def create_training_data_keras(DATA_ROOT, which_information, data_file, feat_typ
     return X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size
 
 
-def uk_standard_layout_keyboard():
+def uk_keyboard_keys_to_2d_coordinates_mjff(typed_sentence, lower_keyboard, upper_keyboard) -> array:
     """
-    Keyboard layout used for the MJFF data.
-
-    For details see: https://www.nature.com/articles/s41598-019-39294-z/figures/5
+    Function returns the 2D coordinates of the characters in the sentence. The MJFF does not
+    have any locator keys so this function is different from the parallel MRC function.
 
     Parameters
     ----------
-    typed_sentence : [type]
-        [description]
-    keyboard : [type]
-        [description]
+    typed_sentence : list
+        list of characters containing the typed sentence by the user
+    english_lower : array
+
+    english_upper : array
+
 
     Returns
     -------
-    [type]
-        [description]
+    array-like
+        Returns an area of the coordinates used to produce the passed sentence
     """
-
-    # TODO: This needs to be changed to reflect the fact that it is actually a UK keyboard as the MRC one (See below)
-    raise ValueError
-
-    # Lower caps
-    kb_row_0 = ["`", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=", ""]
-    kb_row_1 = ["", "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]", ""]
-    kb_row_2 = ["", "a", "s", "d", "f", "g", "h", "j", "k", "l", ";", "'", "", ""]
-    kb_row_3 = ["\\", "z", "x", "c", "v", "b", "n", "m", ",", ".", "/", "", "", ""]
-    kb_row_4 = ["", "", "", " ", " ", " ", " ", " ", " ", "", "", "", "", ""]  # Space bar
-    # Upper caps
-    kb_row_0_u = ["~", "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "_", "+", ""]
-    kb_row_1_u = ["", "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "{", "}", "|"]
-    kb_row_2_u = ["", "A", "S", "D", "F", "G", "H", "J", "K", "L", ":", "", "", ""]
-    kb_row_3_u = ["", "Z", "X", "C", "V", "B", "N", "M", "<", ">", "?", "", "", ""]
-    keyboard = [kb_row_0, kb_row_1, kb_row_2, kb_row_3, kb_row_4, kb_row_0_u, kb_row_1_u, kb_row_2_u, kb_row_3_u]
-
-    return keyboard
-
-
-def uk_keyboard_keys_to_2d_coordinates_mjff(typed_sentence, keyboard):
-    """
-    Function returns the 2D coordinates of the characters in the sentence.
-
-    Parameters
-    ----------
-    typed_sentence : [type]
-        [description]
-    keyboard : [type]
-        [description]
-
-    Returns
-    -------
-    [type]
-        [description]
-    """
-
-    # Store individual key coordinates here
+    assert isinstance(typed_sentence, str)
+    assert ~array_equal(lower_keyboard, upper_keyboard)
+    assert len(typed_sentence) > 1
     coordinates = []
-    for c in typed_sentence:
-        for i, r in enumerate(keyboard):
-            try:
-                # Check if character is in given key-map
-                coordinates.append((i, r.index(c)))
-            except:
-                pass
+    for char in typed_sentence:
+        if char in lower_keyboard:
+            # Lower caps characters
+            coordinates.append(tuple(argwhere(lower_keyboard == char)[0]))
+        elif char in upper_keyboard:
+            # Upper caps characters (also includes special keys such as '#')
+            coordinates.append(tuple(argwhere(upper_keyboard == char)[0]))
+        else:
+            # Error indicator character is mapped to the UNK coordinate ("middle" of keyboard)
+            coordinates.append((3, 7))
+
+    assert None not in coordinates
 
     return array(coordinates)
 
@@ -369,6 +346,7 @@ def us_keyboard_keys_to_2d_coordinates_mrc(
     """
 
     modifier_keys = modifier_key_replacements()  # A dictionary
+    assert ~array_equal(lower_keyboard, upper_keyboard)
     assert len(typed_sentence) > 1
     assert len(typed_key_locations) > 1
     assert len(typed_sentence) == len(typed_key_locations)
@@ -405,46 +383,96 @@ def us_keyboard_keys_to_2d_coordinates_mrc(
     return array(all_coordinates)
 
 
-def us_keyboard_mrc(use_replacement_modifier_symbols=True) -> Tuple[matrix, matrix]:
+def english_language_qwerty_keyboard(layout="us", use_replacement_modifier_symbols=True) -> Tuple[array, array]:
     """
     [lower-case] QWERTY keyboard used for the MRC data collection.
 
-    Note that this keyboard contains modifier keys (such as 'Shift').
+    For details see: https://www.nature.com/articles/s41598-019-39294-z/figures/5
+
+    Note that this US keyboard contains modifier keys (such as 'Shift'), the UK does not.
     """
 
-    # Lower case
-    us_lower = array(
-        [
-            [u"`", u"1", u"2", u"3", u"4", u"5", u"6", u"7", u"8", u"9", u"0", u"-", u"=", None],
-            [u"tab", u"q", u"w", u"e", u"r", u"t", u"y", u"u", u"i", u"o", u"p", "[", "]", "\\"],
-            [u"capslock", u"a", u"s", u"d", u"f", u"g", u"h", u"j", u"k", u"l", u";", u"'", None, None],
-            [u"shift", u"z", u"x", u"c", u"v", u"b", u"n", u"m", u",", u".", u"/", u"shift", None, None],
-            [u"control", u"meta", u"alt", u" ", u" ", u" ", u" ", u" ", u"alt", u"meta", None, u"control", None, None],
-        ],
-        dtype="U",
-    )
-    # Upper case
-    us_upper = array(
-        [
-            [u"~", u"!", u"@", u"#", u"$", u"%", u"^", u"&", u"*", u"(", u")", u"_", u"+", None],
-            [None, u"Q", u"W", u"E", u"R", u"T", u"Y", u"U", u"I", u"O", u"P", u"{", u"}", u"|"],
-            [None, u"A", u"S", u"D", u"F", u"G", u"H", u"J", u"K", u"L", u":", u'"', None, None],
-            [None, u"Z", u"X", u"C", u"V", u"B", u"N", u"M", u"<", u">", u"?", None, None, None],
-            [None, None, None, " ", " ", " ", " ", " ", None, None, None, None, None, None],
-        ],
-        dtype="U",
-    )
+    if layout == "uk":
 
-    if use_replacement_modifier_symbols:
-        # Get global dict
-        mod_dict = modifier_key_replacements()
-        for i in range(us_lower.shape[0]):
-            if any([key in us_lower[i, :] for key in mod_dict.keys()]):
-                for j, item in enumerate(us_lower[i, :]):
-                    if item in mod_dict.keys():
-                        us_lower[i, j] = mod_dict[item]
+        # UK and US keyboard layouts are slightly different.
 
-    return us_lower, us_upper
+        # Lower case
+        lower = array(
+            [
+                [u"`", u"1", u"2", u"3", u"4", u"5", u"6", u"7", u"8", u"9", u"0", u"-", u"=", None],
+                [None, u"q", u"w", u"e", u"r", u"t", u"y", u"u", u"i", u"o", u"p", "[", "]", None],
+                [None, u"a", u"s", u"d", u"f", u"g", u"h", u"j", u"k", u"l", u";", u"'", None, None],
+                ["\\", u"z", u"x", u"c", u"v", u"b", u"n", u"m", u",", u".", u"/", None, None, None],
+                [None, None, None, u" ", u" ", u" ", u" ", u" ", None, None, None, None, None, None],
+            ],
+            dtype="U",
+        )
+        # Upper case
+        upper = array(
+            [
+                [u"¬", u"!", u'"', u"£", u"$", u"%", u"^", u"&", u"*", u"(", u")", u"_", u"+", None],
+                [None, u"Q", u"W", u"E", u"R", u"T", u"Y", u"U", u"I", u"O", u"P", u"{", u"}", None],
+                [None, u"A", u"S", u"D", u"F", u"G", u"H", u"J", u"K", u"L", u":", u"@", "~", None],
+                ["|", u"Z", u"X", u"C", u"V", u"B", u"N", u"M", u"<", u">", u"?", None, None, None],
+                [None, None, None, u" ", u" ", u" ", u" ", u" ", None, None, None, None, None, None],
+            ],
+            dtype="U",
+        )
+    elif layout == "us":
+
+        # Lower case
+        lower = array(
+            [
+                [u"`", u"1", u"2", u"3", u"4", u"5", u"6", u"7", u"8", u"9", u"0", u"-", u"=", None],
+                [u"tab", u"q", u"w", u"e", u"r", u"t", u"y", u"u", u"i", u"o", u"p", "[", "]", "\\"],
+                [u"capslock", u"a", u"s", u"d", u"f", u"g", u"h", u"j", u"k", u"l", u";", u"'", None, None],
+                [u"shift", u"z", u"x", u"c", u"v", u"b", u"n", u"m", u",", u".", u"/", u"shift", None, None],
+                [
+                    u"control",
+                    u"meta",
+                    u"alt",
+                    u" ",
+                    u" ",
+                    u" ",
+                    u" ",
+                    u" ",
+                    u"alt",
+                    u"meta",
+                    None,
+                    u"control",
+                    None,
+                    None,
+                ],
+            ],
+            dtype="U",
+        )
+        # Upper case
+        upper = array(
+            [
+                [u"~", u"!", u"@", u"#", u"$", u"%", u"^", u"&", u"*", u"(", u")", u"_", u"+", None],
+                [None, u"Q", u"W", u"E", u"R", u"T", u"Y", u"U", u"I", u"O", u"P", u"{", u"}", u"|"],
+                [None, u"A", u"S", u"D", u"F", u"G", u"H", u"J", u"K", u"L", u":", u'"', None, None],
+                [None, u"Z", u"X", u"C", u"V", u"B", u"N", u"M", u"<", u">", u"?", None, None, None],
+                [None, None, None, u" ", u" ", u" ", u" ", u" ", None, None, None, None, None, None],
+            ],
+            dtype="U",
+        )
+
+        # We only use modifier symbols in the MRC dataset
+        if use_replacement_modifier_symbols:
+            # Get global dict
+            mod_dict = modifier_key_replacements()
+            for i in range(lower.shape[0]):
+                if any([key in lower[i, :] for key in mod_dict.keys()]):
+                    for j, item in enumerate(lower[i, :]):
+                        if item in mod_dict.keys():
+                            lower[i, j] = mod_dict[item]
+    else:
+        raise ValueError
+
+    assert lower.shape == upper.shape, "Lower shape: {}; upper shape: {}".format(lower.shape, upper.shape)
+
+    return lower, upper
 
 
 def getval_array(d):
