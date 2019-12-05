@@ -1,5 +1,10 @@
 # Ignore data folder so we don't push the data to the repo
-data/
+data/MJFF/raw/
+data/MJFF/archive/
+data/MRC/archive/
+data/MRC/*.csv
+data/MRC/*.pkl
+data/test_data/
 results/
 
 # Byte-compiled / optimized / DLL files
