@@ -13,6 +13,7 @@ from keras.backend.tensorflow_backend import set_session
 from keras.optimizers import Adam, Nadam  # Which optimisers to consider
 from numpy import asarray, vstack
 from sklearn.utils import class_weight
+import pickle
 from talos import Deploy, Predict, Restore
 
 # This block is important if we want the memory to grow on the GPU, and not block allocate the whole thing
@@ -181,6 +182,10 @@ if args.save_model == "y":
 
     # Deploy is stupid, hence just move the file
     os.rename(best_model_file + ".zip", my_dir + "/" + best_model_file + ".zip")
+
+    # Save test (X,y)
+    pickle.dump(X_test, open(my_dir + "/" + "X_test_" + time_and_date + ".pkl", "wb"))
+    pickle.dump(np.array(y_test), open(my_dir + "/" + "y_test_" + time_and_date + ".pkl", "wb"))
 
     # # Move talos' history file too
     # os.system("mv *.csv ../results/" + args.which_dataset + "/" + args.which_information)
