@@ -181,7 +181,13 @@ def roundup(x):
 
 
 def create_training_data_keras(
-    DATA_ROOT, which_information, csv_file, feat_type=None, indicator_character="ω", mrc_unk_symbol="£"
+    DATA_ROOT,
+    which_information,
+    csv_file,
+    feat_type=None,
+    indicator_character="ω",
+    mrc_unk_symbol="£",
+    for_plotting_results=False,
 ):
     """
     This function creats one-hot encoded character -data for the document (=subject)
@@ -292,10 +298,13 @@ def create_training_data_keras(
     # Get labels (diagnoses)
     y = list(itertools.chain.from_iterable(subjects_diagnoses.values()))  # df.Diagnosis.tolist()
 
-    # [stratified] chop-up into train and test sets
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, stratify=y)
-
-    return X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size
+    if for_plotting_results is False:
+        # [stratified] chop-up into train and test sets
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, stratify=y)
+        return X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size
+    else:
+        # When we plot results we just want the processed full dataset.
+        return X, array(y).reshape(-1, 1)
 
 
 def uk_and_spanish_keyboard_keys_to_2d_coordinates_mjff(typed_sentence, lower_keyboard, upper_keyboard) -> array:

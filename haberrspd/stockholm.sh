@@ -3,7 +3,7 @@
 # MJFF
 
 upper_count=300
-lower_count=150
+lower_count=100
 spanish_data=SpanishData-preprocessed.csv
 
 ## char
