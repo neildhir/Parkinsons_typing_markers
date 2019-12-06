@@ -3,7 +3,7 @@
 # MRC
 
 upper_count=300
-lower_count=100
+lower_count=150
 attempt_1=EnglishData-preprocessed_attempt_1.csv
 attempt_2=EnglishData-preprocessed_attempt_2.csv
 

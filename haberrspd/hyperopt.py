@@ -148,33 +148,33 @@ if args.save_model == "y":
     if not os.path.exists(my_dir):
         os.makedirs(my_dir)
 
-    # Query best learned model
-    probs = Predict(scanner_object, scanner_object.data)  # XXX: set options for the method properly
+    # # Query best learned model
+    # probs = Predict(scanner_object, scanner_object.data)  # XXX: set options for the method properly
 
-    # Extract class-probabilities from best learned model
-    true_labels_and_label_probs = np.zeros((len(X_test), 2))
-    for i, (y, x) in tqdm(enumerate(zip(y_test, X_test))):
-        # Note that keras takes a 3D array and not the standard 2D, hence extra axis
-        true_labels_and_label_probs[i, :] = [y, float(probs.predict(x[np.newaxis, :, :]))]
+    # # Extract class-probabilities from best learned model
+    # true_labels_and_label_probs = np.zeros((len(X_test), 2))
+    # for i, (y, x) in tqdm(enumerate(zip(y_test, X_test))):
+    #     # Note that keras takes a 3D array and not the standard 2D, hence extra axis
+    #     true_labels_and_label_probs[i, :] = [y, float(probs.predict(x[np.newaxis, :, :]))]
 
     time_and_date = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-    # Save array for later use
-    np.savetxt(
-        "../results/"
-        + args.which_dataset
-        + "/"
-        + args.which_information
-        + "/"
-        + args.unique_ID
-        + "_label_and_label_probs_"
-        + time_and_date
-        + str(args.round_limit)
-        + ".csv",
-        true_labels_and_label_probs,
-        fmt="%.15f",
-        delimiter=",",
-    )
+    # # Save array for later use
+    # np.savetxt(
+    #     "../results/"
+    #     + args.which_dataset
+    #     + "/"
+    #     + args.which_information
+    #     + "/"
+    #     + args.unique_ID
+    #     + "_label_and_label_probs_"
+    #     + time_and_date
+    #     + str(args.round_limit)
+    #     + ".csv",
+    #     true_labels_and_label_probs,
+    #     fmt="%.15f",
+    #     delimiter=",",
+    # )
 
     # Save whole model for later use
     best_model_file = args.unique_ID + "_talos_best_model_" + time_and_date
