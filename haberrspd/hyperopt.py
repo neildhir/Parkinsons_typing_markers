@@ -1,5 +1,4 @@
 import argparse
-from tqdm import tqdm
 import datetime
 import os
 import sys
