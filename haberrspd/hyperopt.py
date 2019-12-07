@@ -89,14 +89,14 @@ optimisation_parameters = {
     "conv_output_space": [8, 16, 32],  # ,8],
     "number_of_large_filters": [1, 2, 4],
     "number_of_small_filters": [1, 2, 4],
-    "large_filter_length": [8, 16, 32],  # When time is included [20,40,80,160], when not: [10,20,40,80]
-    "small_filter_length": [2, 4, 8],  # [5, 10, 20],
-    "pool_length": [2, 4],
+    "large_filter_length": [8, 16, 32, 64],  # When time is included [20,40,80,160], when not: [10,20,40,80]
+    "small_filter_length": [2, 4, 8, 16],  # [5, 10, 20],
+    "pool_length": [2, 4, 8, 16, 32],
     "dense_units_layer_3": [32, 64],
     "dense_units_layer_2": [16, 32],
     "batch_size": [16, 32],
-    "epochs": [100, 200],
-    "dropout": (0, 0.5, 5),
+    "epochs": [200],
+    "dropout": (0, 1, 5),
     "conv_padding": ["same"],
     "conv_kernel_initializer": ["uniform"],
     "conv_bias_initializer": ["uniform"],
@@ -131,6 +131,7 @@ scanner_object = ta.Scan(
     x=X_train,
     y=asarray(y_train).reshape(-1, 1),
     x_val=X_test,
+    reduction_method="correlation",
     y_val=asarray(y_test).reshape(-1, 1),
     round_limit=args.round_limit,  # Hard limit on the number of permutations we test
     fraction_limit=args.fraction_limit,  # Percentage of permutation space to explore

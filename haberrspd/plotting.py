@@ -34,6 +34,52 @@ mpl.rcParams.update(nice_fonts)
 
 
 def plot_superimposed_roc_curves(data: dict, filename=None) -> None:
+    """
+    Note here that data comes as data[key] = (fpr,tpr).
+    """
+
+    if filename:
+        assert isinstance(filename, str)
+
+    # Set styles for paper
+    sns.set_context("paper")
+    mpl.rcParams.update(nice_fonts)
+
+    lw = 2
+    fig, ax = plt.subplots(1, 1, figsize=(3, 3))
+    palette = sns.color_palette(palette="colorblind", n_colors=len(data))
+    styles = ["-", "--", "-."]
+    alphas = [1.0, 0.85, 0.7]
+    # Plot ROC curves
+    for i, item in enumerate(data.keys()):
+        fpr, tpr = data[item]
+        # Calculate area under the ROC curve here
+        roc_auc = auc(fpr, tpr)
+        ax.plot(
+            fpr, tpr, color=palette[i], lw=lw, linestyle=styles[i], alpha=alphas[i], label="%s: %0.2f" % (item, roc_auc)
+        )
+
+    ax.plot([0, 1], [0, 1], color="gray", lw=lw, linestyle=":", alpha=0.5, label="Chance: 0.50")  # Chance
+    ax.set_xlim([0.0, 1.0])
+    ax.set_ylim([0.0, 1.05])
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    # Legend
+    ax.legend(loc="lower right", ncol=1, framealpha=1, fancybox=False, borderpad=0.5)
+    # Grid
+    ax.grid(True, alpha=0.2)
+    # If given then save
+    if filename:
+        # Set reference time for save
+        now = datetime.datetime.now()
+        fig.savefig(
+            "../figures/cnn_roc_curves-" + filename + "-" + now.strftime("%Y-%m-%d-%H:%M") + ".pdf", bbox_inches="tight"
+        )
+    else:
+        plt.show()
+
+
+def plot_superimposed_roc_curves_with_confidence_bounds(data: dict, filename=None) -> None:
 
     if filename:
         assert isinstance(filename, str)

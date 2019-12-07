@@ -1,5 +1,7 @@
 import glob
-from os.path import isdir, exists
+import pickle
+from collections import defaultdict
+from os.path import exists, isdir
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -8,12 +10,10 @@ import pandas as pd
 from scipy import interp
 from sklearn.metrics import auc as AUC
 from sklearn.metrics import roc_curve
-from sklearn.model_selection import StratifiedShuffleSplit
-from talos import Predict
 from talos.utils.load_model import load_model
 from tqdm import tqdm
 
-from haberrspd.charCNN.data_utilities import create_training_data_keras
+from haberrspd.plotting import plot_superimposed_roc_curves
 
 
 class PostprocessTalos:
@@ -57,6 +57,8 @@ class PostprocessTalos:
         self.extract_to = self.path_to_zip.replace(".zip", "")
         self.package_name = self.extract_to.split("/")[-1]
         self.file_prefix = self.extract_to + "/" + self.package_name
+        self.X_test_file = "X_test_" + self.file_prefix[-19:] + ".pkl"
+        self.y_test_file = "y_test_" + self.file_prefix[-19:] + ".pkl"
 
         print("Load model from: {}".format(self.path_to_zip))
         print("Load test data from: {}".format(dataset + "/" + which_information + "/" + csv_filename))
@@ -90,62 +92,18 @@ class PostprocessTalos:
         del self.extract_to, self.file_prefix
         del self.package_name, self.path_to_zip
 
-    def load_corresponding_dataset(self):
-        # Get processed data, ready to insert into the trained model
-        return create_training_data_keras(
-            self.data_root, self.which_information, self.csv_filename, for_plotting_results=True
-        )
+    def load_test_dataset(self):
+        X_test = pickle.load(open(self.results_root / self.X_test_file, "rb"))
+        y_test = pickle.load(open(self.results_root / self.y_test_file, "rb"))
+        return X_test, y_test
 
-    def create_crossvalidated_test_datasets(self, splits=10):
-        # Note that these are received as proper arrays i.e. y is not a list.
-        X, y = self.load_corresponding_dataset()
-        # SSS
-        sss = StratifiedShuffleSplit(n_splits=splits, test_size=0.25, random_state=0)
-        targets = []
-        X_tests = []
-        for train_index, test_index in sss.split(X, y):
-            X_tests.append(X[test_index])
-            targets.append(y[test_index])
-        assert len(X_tests) == len(targets) == splits
-        return X_tests, targets
-
-    def calculate_all_ROC_curves(self):
+    def get_fpr_and_tpr(self):
         self.load_trained_model()  # Get trained model
-        X_tests, targets = self.create_crossvalidated_test_datasets()
-        rocs = []  # Store all ROC 'curves' here
-        for X_test, y_test in zip(X_tests, targets):
-            labels_and_label_probs = np.zeros((len(X_test), 2))
-            for i, (y, x) in tqdm(enumerate(zip(y_test, X_test))):
-                # Note that keras takes a 3D array and not the standard 2D, hence extra axis
-                labels_and_label_probs[i, :] = [y, float(self.model.predict(x[np.newaxis, :, :]))]
-            rocs.append(labels_and_label_probs)
+        X_test, y_test = self.load_test_dataset()
+        self.true_labels_and_label_probs = np.zeros((len(X_test), 2))
+        for i, (y, x) in tqdm(enumerate(zip(y_test, X_test))):
+            # Note that keras takes a 3D array and not the standard 2D, hence extra axis
+            self.true_labels_and_label_probs[i, :] = [y, float(self.model.predict(x[np.newaxis, :, :]))]
+        fpr, tpr, _ = roc_curve(y_test, self.true_labels_and_label_probs[:, 1], pos_label=1)
+        return fpr, tpr
 
-        return rocs
-
-    def calculate_mean_and_variance_of_ROC_curves(self):
-
-        # Get all samples
-        data = self.calculate_all_ROC_curves()
-        assert all(x.shape[0] == data[0].shape[0] for x in data)
-
-        tprs = []
-        aucs = []
-
-        # False positive rate
-        mean_fpr = np.linspace(0, 1, len(data[0]))
-        # Get all results
-        for out in data:
-            # out[0] == y_true, out[1] == y_score
-            fpr, tpr, _ = roc_curve(out[:, 0], out[:, 1], pos_label=1)
-            # Calculate area under the ROC curve here
-            roc_auc = AUC(tpr, fpr)
-            aucs.append(roc_auc)
-            tprs.append(interp(mean_fpr, fpr, tpr))
-        # Mean ROC curve
-        mean_tpr = np.vstack(tprs).mean(axis=0)  # np.mean(tprs, axis=1)
-        assert len(mean_tpr) == len(mean_fpr)
-        mean_tpr[-1] = 1.0
-        mean_auc = AUC(mean_fpr, mean_tpr)
-        std_auc = np.std(aucs)
-        print(mean_auc.round(3), std_auc.round(3))
-        return mean_fpr, mean_tpr

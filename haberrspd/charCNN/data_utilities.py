@@ -300,7 +300,7 @@ def create_training_data_keras(
 
     if for_plotting_results is False:
         # [stratified] chop-up into train and test sets
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, stratify=y)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, stratify=y)
         return X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size
     else:
         # When we plot results we just want the processed full dataset.
