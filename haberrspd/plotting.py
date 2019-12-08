@@ -49,17 +49,18 @@ def plot_superimposed_roc_curves(data: dict, filename=None) -> None:
     fig, ax = plt.subplots(1, 1, figsize=(3, 3))
     palette = sns.color_palette(palette="colorblind", n_colors=len(data))
     styles = ["-", "--", "-."]
-    alphas = [1.0, 0.85, 0.7]
+    lws = [2, 3, 4]
+    alphas = [1.0, 0.80, 0.6]
     # Plot ROC curves
     for i, item in enumerate(data.keys()):
         fpr, tpr = data[item]
         # Calculate area under the ROC curve here
         roc_auc = auc(fpr, tpr)
         ax.plot(
-            fpr, tpr, color=palette[i], lw=lw, linestyle=styles[i], alpha=alphas[i], label="%s: %0.2f" % (item, roc_auc)
+            fpr, tpr, color=palette[i], lw=lws[i], linestyle="-", alpha=alphas[i], label="%s: %0.2f" % (item, roc_auc)
         )
 
-    ax.plot([0, 1], [0, 1], color="gray", lw=lw, linestyle=":", alpha=0.5, label="Chance: 0.50")  # Chance
+    ax.plot([0, 1], [0, 1], color="gray", lw=lw, linestyle="--", alpha=0.5, label="Chance: 0.50")  # Chance
     ax.set_xlim([0.0, 1.0])
     ax.set_ylim([0.0, 1.05])
     ax.set_xlabel("False Positive Rate")

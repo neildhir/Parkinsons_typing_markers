@@ -67,12 +67,12 @@ if args.fraction_limit:
 # --- LOAD DATA
 
 DATA_ROOT = Path("../data/") / args.which_dataset.upper() / "preproc"
-X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size = create_training_data_keras(
+X_train, X_test, X_val, y_train, y_test, y_val, max_sentence_length, alphabet_size = create_training_data_keras(
     DATA_ROOT, args.which_information, args.csv_file
 )
 
 # Class weights are dynamic as the data-loader is stochastic and changes with each run.
-class_weights = dict(zip([0, 1], class_weight.compute_class_weight("balanced", list(set(y_train)), y_train)))
+class_weights = dict(zip([0, 1], class_weight.compute_class_weight("balanced", np.unique(y_train), y_train)))
 
 
 # --- HYPERPARMETERS TO OPTIMISE
@@ -84,25 +84,25 @@ if args.which_information == "char_time_space":
 
 # Note that the more parameters we have in here, the longer this is going to take.
 optimisation_parameters = {
-    "lr": (0.1, 10, 5),  # This is a range not a tuple
+    "lr": [1],  # This is a range not a tuple
     "conv_output_space": [8, 16, 32],  # ,8],
-    "number_of_large_filters": [1, 2, 4],
-    "number_of_small_filters": [1, 2, 4],
+    "number_of_large_filters": [2, 3, 4],
+    "number_of_small_filters": [2, 3, 4],
     "large_filter_length": [8, 16, 32, 64],  # When time is included [20,40,80,160], when not: [10,20,40,80]
     "small_filter_length": [2, 4, 8, 16],  # [5, 10, 20],
-    "pool_length": [2, 4, 8, 16, 32],
-    "dense_units_layer_3": [32, 64],
-    "dense_units_layer_2": [16, 32],
+    "pool_length": [2, 4],
+    "dense_units_layer_3": [128, 256, 512],  # [32, 64],
+    "dense_units_layer_2": [64, 128, 256],  # [16, 32],
     "batch_size": [16, 32],
     "epochs": [200],
-    "dropout": (0, 1, 5),
+    "dropout": (0, 0.5, 5),
     "conv_padding": ["same"],
-    "conv_kernel_initializer": ["uniform"],
-    "conv_bias_initializer": ["uniform"],
-    "dense_kernel_initializer": ["uniform"],
-    "dense_bias_initializer": ["uniform"],
+    "conv_kernel_initializer": ["normal"],
+    "conv_bias_initializer": ["normal"],
+    "dense_kernel_initializer": ["normal"],
+    "dense_bias_initializer": ["normal"],
     "optimizer": [Adam, Nadam],  # If used this way, these have to explicitly imported
-    "loss": ["logcosh", "binary_crossentropy"],  # Loss functions
+    "loss": ["binary_crossentropy"],  # Loss functions
     "conv_activation": ["relu"],
     "dense_activation": ["relu"],
     "last_activation": ["sigmoid"],
@@ -118,6 +118,8 @@ if "time" in args.which_information:
     del optimisation_parameters["small_filter_length"]
     optimisation_parameters["large_filter_length"] = [32, 64, 128, 256]
     optimisation_parameters["small_filter_length"] = [4, 8, 16, 32]
+    del optimisation_parameters["pool_length"]
+    optimisation_parameters["pool_length"] = [4, 8, 16]
 
 space_size = size_of_optimisation_space(optimisation_parameters)
 print("\nThe _RAW_ (i.e. not-yet-reduced) parameter permutation space is: {}\n".format(space_size))
@@ -128,10 +130,10 @@ if args.fraction_limit:
 
 scanner_object = ta.Scan(
     x=X_train,
-    y=asarray(y_train).reshape(-1, 1),
-    x_val=X_test,
+    y=y_train.reshape(-1, 1),
+    x_val=X_val,
     reduction_method="correlation",
-    y_val=asarray(y_test).reshape(-1, 1),
+    y_val=y_val.reshape(-1, 1),
     round_limit=args.round_limit,  # Hard limit on the number of permutations we test
     fraction_limit=args.fraction_limit,  # Percentage of permutation space to explore
     model=char_cnn_model_talos,
@@ -148,33 +150,28 @@ if args.save_model == "y":
     if not os.path.exists(my_dir):
         os.makedirs(my_dir)
 
-    # # Query best learned model
-    # probs = Predict(scanner_object, scanner_object.data)  # XXX: set options for the method properly
-
-    # # Extract class-probabilities from best learned model
-    # true_labels_and_label_probs = np.zeros((len(X_test), 2))
-    # for i, (y, x) in tqdm(enumerate(zip(y_test, X_test))):
-    #     # Note that keras takes a 3D array and not the standard 2D, hence extra axis
-    #     true_labels_and_label_probs[i, :] = [y, float(probs.predict(x[np.newaxis, :, :]))]
-
+    # Query best learned model
+    talos_model = Predict(scanner_object, task="binary")
+    # Extract class-probabilities from best learned model
+    true_labels_and_label_probs = np.hstack([y_test.reshape(-1, 1), talos_model.predict(X_test)])
     time_and_date = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-    # # Save array for later use
-    # np.savetxt(
-    #     "../results/"
-    #     + args.which_dataset
-    #     + "/"
-    #     + args.which_information
-    #     + "/"
-    #     + args.unique_ID
-    #     + "_label_and_label_probs_"
-    #     + time_and_date
-    #     + str(args.round_limit)
-    #     + ".csv",
-    #     true_labels_and_label_probs,
-    #     fmt="%.15f",
-    #     delimiter=",",
-    # )
+    # Save array for later use
+    np.savetxt(
+        "../results/"
+        + args.which_dataset
+        + "/"
+        + args.which_information
+        + "/"
+        + args.unique_ID
+        + "_label_and_label_probs_"
+        + time_and_date
+        + str(args.round_limit)
+        + ".csv",
+        true_labels_and_label_probs,
+        fmt="%.15f",
+        delimiter=",",
+    )
 
     # Save whole model for later use
     best_model_file = args.unique_ID + "_talos_best_model_" + time_and_date
@@ -186,9 +183,6 @@ if args.save_model == "y":
     # Save test (X,y)
     pickle.dump(X_test, open(my_dir + "/" + "X_test_" + time_and_date + ".pkl", "wb"))
     pickle.dump(np.array(y_test), open(my_dir + "/" + "y_test_" + time_and_date + ".pkl", "wb"))
-
-    # # Move talos' history file too
-    # os.system("mv *.csv ../results/" + args.which_dataset + "/" + args.which_information)
 
 else:
     exit(0)

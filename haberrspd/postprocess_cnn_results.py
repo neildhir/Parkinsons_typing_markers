@@ -28,8 +28,7 @@ class PostprocessTalos:
         assert language in ["english", "spanish"]
         assert which_information in ["char", "char_time", "char_time_space"]
         assert dataset in ["mjff", "mrc"]
-        assert isdir("../results/MJFF")
-        assert isdir("../results/MRC")
+        assert isdir("../results/" + dataset.upper())
         if language == "english":
             csv_filename = language.capitalize() + "Data-preprocessed_attempt_{}".format(attempt) + ".csv"
         else:
@@ -81,29 +80,21 @@ class PostprocessTalos:
         # add experiment details
         self.details = pd.read_csv(self.file_prefix + "_details.txt", header=None)
 
-        # add model
+        # This is the best saved model by default
         self.model = load_model(self.file_prefix + "_model")
 
         # add results
         self.results = pd.read_csv(self.file_prefix + "_results.csv")
         self.results.drop("Unnamed: 0", axis=1, inplace=True)
 
-        # clean up
-        del self.extract_to, self.file_prefix
-        del self.package_name, self.path_to_zip
-
     def load_test_dataset(self):
-        X_test = pickle.load(open(self.results_root / self.X_test_file, "rb"))
-        y_test = pickle.load(open(self.results_root / self.y_test_file, "rb"))
-        return X_test, y_test
+        self.X_test = pickle.load(open(self.results_root / self.X_test_file, "rb"))
+        self.y_test = pickle.load(open(self.results_root / self.y_test_file, "rb")).reshape(-1, 1)
 
     def get_fpr_and_tpr(self):
         self.load_trained_model()  # Get trained model
-        X_test, y_test = self.load_test_dataset()
-        self.true_labels_and_label_probs = np.zeros((len(X_test), 2))
-        for i, (y, x) in tqdm(enumerate(zip(y_test, X_test))):
-            # Note that keras takes a 3D array and not the standard 2D, hence extra axis
-            self.true_labels_and_label_probs[i, :] = [y, float(self.model.predict(x[np.newaxis, :, :]))]
-        fpr, tpr, _ = roc_curve(y_test, self.true_labels_and_label_probs[:, 1], pos_label=1)
+        self.load_test_dataset()
+        self.true_labels_and_label_probs = np.hstack([self.y_test, self.model.predict(self.X_test)])
+        fpr, tpr, _ = roc_curve(self.y_test, self.true_labels_and_label_probs[:, 1], pos_label=1)
         return fpr, tpr
 
