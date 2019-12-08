@@ -84,7 +84,7 @@ if args.which_information == "char_time_space":
 
 # Note that the more parameters we have in here, the longer this is going to take.
 optimisation_parameters = {
-    "lr": [1],  # This is a range not a tuple
+    "lr": [1, 0.5],  # This is a range not a tuple
     "conv_output_space": [8, 16, 32],  # ,8],
     "number_of_large_filters": [2, 3, 4],
     "number_of_small_filters": [2, 3, 4],
