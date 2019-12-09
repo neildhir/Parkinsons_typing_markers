@@ -1,7 +1,8 @@
 <?xml version="1.0"?>
 <!DOCTYPE ipe SYSTEM "ipe.dtd">
-<ipe version="70206" creator="Ipe 7.2.10">
-<info created="D:20191207222931" modified="D:20191207222931"/>
+<ipe version="70206" creator="Ipe 7.2.7">
+<info created="D:20191207222931" modified="D:20191208232640"/>
+<preamble>\usepackage{amsmath}</preamble>
 <ipestyle name="basic">
 <symbol name="arrow/arc(spx)">
 <path stroke="sym-stroke" fill="sym-stroke" pen="sym-pen">
@@ -254,17 +255,25 @@ h
 <page>
 <layer name="alpha"/>
 <view layers="alpha" active="alpha"/>
-<path layer="alpha" matrix="1 0 0 1 0 16" stroke="black">
-192 704 m
-208 704 l
+<path layer="alpha" stroke="black">
+272 664 m
+272 680 l
+256 680 l
+256 664 l
+h
 </path>
-<path stroke="darkcyan" dash="dotted">
-192 648 m
+<path stroke="darkred">
+208 640 m
+264 676 l
+208 736 l
+</path>
+<path stroke="darkcyan" dash="dashed">
+160 640 m
 224 656 l
 </path>
-<path stroke="darkred" dash="dotted">
-208 640 m
-224 647.837 l
+<path matrix="1 0 0 1 0 16" stroke="black">
+192 704 m
+208 704 l
 </path>
 <path stroke="black">
 96 736 m
@@ -342,10 +351,10 @@ h
 208 736 l
 h
 </path>
-<path stroke="black">
+<path stroke="black" fill="1">
 224 720 m
-224 624 l
-240 624 l
+224 608 l
+240 608 l
 240 720 l
 h
 </path>
@@ -356,34 +365,26 @@ h
 272 632 l
 h
 </path>
-<path stroke="darkcyan" dash="dotted">
+<path stroke="darkcyan" dash="dashed">
 160 608 m
 224 640 l
 </path>
-<path stroke="darkcyan" dash="dotted">
-160 640 m
-192 648 l
-</path>
-<path stroke="darkred" dash="dotted">
+<path stroke="darkred" dash="dashed">
 160 672 m
-192 720 l
+192 688 l
 </path>
-<path stroke="darkred" dash="dotted">
+<path stroke="darkred" dash="dashed">
 160 720 m
-192 736 l
+192 704 l
 </path>
-<path matrix="1 0 0 1 -16 -24" stroke="darkred" fill="darkred" pen="fat" opacity="30%">
+<path matrix="1 0 0 1 -16 -56" stroke="darkred" fill="darkred" pen="fat" opacity="30%">
 208 760 m
 208 744 l
 224 744 l
 224 760 l
 h
 </path>
-<path stroke="black">
-192 704 m
-208 704 l
-</path>
-<path matrix="1 0 0 1 0 -16" stroke="black">
+<path matrix="1 0 0 1 0 16" stroke="black">
 192 704 m
 208 704 l
 </path>
@@ -407,59 +408,112 @@ h
 192 704 m
 208 704 l
 </path>
-<path matrix="1 0 0 1 24 -8" stroke="black">
-272 704 m
-288 704 l
-328 672 l
-312 672 l
-272 704 l
+<path matrix="1 0 0 1 32 -80" stroke="black">
+192 704 m
+208 704 l
 </path>
-<path matrix="1 0 0 1 24 -8" stroke="black">
-336 696 m
-352 696 l
-376 680 l
-360 680 l
-336 696 l
+<path matrix="1 0 0 1 -16 0" stroke="black">
+352 704 m
+368 704 l
+448 640 l
+432 640 l
+h
 </path>
-<path matrix="1 0 0 1 24 -8" stroke="black">
-282 696 m
-298 696 l
-</path>
-<path matrix="1 0 0 1 24 -8" stroke="black">
-292 688 m
-308 688 l
-</path>
-<path matrix="1 0 0 1 24 -8" stroke="black">
-302 680 m
-318 680 l
-</path>
-<path matrix="1 0 0 1 24 0" stroke="black">
-348 680 m
-364 680 l
-</path>
-<path stroke="darkcyan" dash="dotted">
-240 624 m
-336 664 l
-</path>
-<path stroke="darkcyan" dash="dotted">
-240 720 m
-326 672 l
-</path>
-<path stroke="darkred" dash="dotted">
-208 736 m
-296 696 l
-</path>
-<path stroke="darkred" dash="dotted">
-240 656 m
-306 688 l
+<path matrix="1 0 0 1 -8 0" stroke="black">
+392 696 m
+408 696 l
+464 656 l
+448 656 l
+h
 </path>
 <path stroke="black">
-352 664 m
-384 672 l
+432 688 m
+448 688 l
+472 672 l
+456 672 l
+h
+</path>
+<path matrix="1 0 0 1 -8 0" stroke="black" dash="dashed">
+440 640 m
+448 656 l
+448 656 l
+</path>
+<path matrix="1 0 0 1 -8 0" stroke="black" dash="dashed">
+464 656 m
+464 672 l
+</path>
+<path matrix="1 0 0 1 -8 0" stroke="black" dash="dashed">
+408 696 m
+440 688 l
+</path>
+<path matrix="1 0 0 1 -8 0" stroke="black" dash="dashed">
+360 704 m
+392 696 l
+</path>
+<text matrix="1 0 0 1 0 -64" transformations="translations" pos="288 736" stroke="black" type="label" width="22.954" height="7.651" depth="0" halign="center" valign="center" size="LARGE" style="math">\cdots</text>
+<path stroke="black">
+320 664 m
+320 680 l
+304 680 l
+304 664 l
+h
+</path>
+<path stroke="darkcyan">
+240 608 m
+260 668 l
+240 720 l
+</path>
+<path stroke="black" fill="white">
+320 680 m
+336 704 l
+336 704 l
+</path>
+<path stroke="black" fill="white">
+320 664 m
+416 640 l
 </path>
 <path stroke="black">
-312 696 m
-360 688 l
+252 660 m
+252 656 l
+324 656 l
+324 660 l
 </path>
+<text transformations="translations" pos="260 652" stroke="black" type="minipage" width="84" height="11.949" depth="6.98" valign="top" size="small">Convolution 
+\&amp; max-pooling layers</text>
+<path stroke="black">
+328 704 m
+328 708 l
+452 708 l
+452 704 l
+</path>
+<text matrix="1 0 0 1 8 -20" transformations="translations" pos="336 736" stroke="black" type="minipage" width="96" height="6.48" depth="1.49" valign="center" size="small">Fully connected layers</text>
+<path stroke="black" rarrow="ptarc/normal">
+172.992 713.504 m
+182.009 736.387
+175.815 748.777
+156 752 c
+</path>
+<text matrix="1 0 0 1 8 -16" transformations="translations" pos="96 768" stroke="black" type="label" width="48.893" height="6.227" depth="0" valign="center" size="small">Convolution</text>
+<path stroke="black" rarrow="ptarc/normal">
+216.017 727.41 m
+224 736
+236 740
+252 740 c
+</path>
+<text transformations="translations" pos="256 740" stroke="black" type="label" width="113.707" height="6.23" depth="1.74" valign="center" size="small">Max-pooling over time layer</text>
+<path stroke="black">
+92 604 m
+92 600 l
+164 600 l
+164 604 l
+</path>
+<text transformations="translations" pos="88 592" stroke="black" type="minipage" width="104" height="10.759" depth="5.79" valign="top" size="footnote">One-hot encoded sentence representation of size </text>
+<text matrix="1 0 0 1 -55.3785 5.45023" transformations="translations" pos="224 572" stroke="black" type="label" width="38.957" height="5.453" depth="0.99" valign="baseline" size="footnote" style="math">K_{\text{max}} \times m</text>
+<path stroke="black" rarrow="ptarc/normal">
+232 608 m
+232 596 l
+264 596 l
+</path>
+<text matrix="1 0 0 1 -4 0" transformations="translations" pos="272 596" stroke="black" type="label" width="46.696" height="5.446" depth="1.55" valign="center" size="footnote">Feature map</text>
 </page>
 </ipe>
