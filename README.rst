@@ -5,20 +5,25 @@ Parkinson’s Disease can be understood as a disorder of motor habits. A predict
 
 Models
 ---
-* Sentence classification via neural NLP
-* Grammar error correction via neural NLP
+* Sentence classification via neural NLP.
+* (Grammar error correction via neural NLP) this is not currently being pursued but it remains a good idea.
 
 Goal
 --------
 
 Design an easy and simple test that would give early warning that habitual control is starting to degrade.
 
+Data augmentation
+---
+[New section as of 11/12/2019]
+
+- Consider novel methods for data augmentation incl:
+    - Use the "keyboard coordinate" approach
+    - Sample slice matrices from all concatenated typed sentences, per subject, converted to one-hot encoding
 
 Relevant
 --------
 
-* Free software: MIT license
-* Documentation: https://haberrspd.readthedocs.io.
 
 Features
 --------

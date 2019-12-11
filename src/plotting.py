@@ -33,7 +33,7 @@ nice_fonts = {
 mpl.rcParams.update(nice_fonts)
 
 
-def plot_superimposed_roc_curves(data: dict, filename=None) -> None:
+def plot_superimposed_roc_curves(data: dict, filename=None, with_confidence_bounds=False) -> None:
     """
     Note here that data comes as data[key] = (fpr,tpr).
     """
@@ -47,20 +47,59 @@ def plot_superimposed_roc_curves(data: dict, filename=None) -> None:
 
     lw = 2
     fig, ax = plt.subplots(1, 1, figsize=(3, 3))
-    palette = sns.color_palette(palette="colorblind", n_colors=len(data))
+    # palette = sns.color_palette(palette="colorblind", n_colors=len(data))
+    palette = sns.color_palette(n_colors=len(data))
     styles = ["-", "--", "-."]
     lws = [2, 3, 4]
     alphas = [1.0, 0.80, 0.6]
     # Plot ROC curves
-    for i, item in enumerate(data.keys()):
-        fpr, tpr = data[item]
-        # Calculate area under the ROC curve here
-        roc_auc = auc(fpr, tpr)
-        ax.plot(
-            fpr, tpr, color=palette[i], lw=lws[i], linestyle="-", alpha=alphas[i], label="%s: %0.2f" % (item, roc_auc)
-        )
+    if with_confidence_bounds is False:
+        for i, item in enumerate(data.keys()):
+            fpr, tpr = data[item]
+            # Calculate area under the ROC curve here
+            roc_auc = auc(fpr, tpr)
+            ax.plot(
+                fpr, tpr, color=palette[i], lw=lw, linestyle="-", alpha=alphas[i], label="%s: %0.2f" % (item, roc_auc)
+            )
+        ax.plot([0, 1], [0, 1], color="gray", lw=lw, linestyle="--", alpha=0.5, label="Chance: 0.50")  # Chance
+    else:
+        # ROC curves with confidence bounds
+        for i, item in enumerate(data.keys()):
+            # Each key is a information entity e.g. C or C+T
+            tprs = []
+            aucs = []
+            # False positive rate
+            mean_fpr = np.linspace(0, 1, len(data[item][0][0]))
+            # Get all results
+            for out in data[item]:
+                fpr, tpr = out
+                # Calculate area under the ROC curve here
+                roc_auc = auc(fpr, tpr)
+                aucs.append(roc_auc)
+                tprs.append(interp(mean_fpr, fpr, tpr))
+            # Mean ROC curve
+            mean_tpr = np.mean(tprs, axis=0)
+            assert len(mean_tpr) == len(mean_fpr)
+            mean_tpr[-1] = 1.0
+            mean_auc = auc(mean_fpr, mean_tpr)
+            std_auc = np.std(aucs)
+            # Plot mean curve
+            ax.plot(
+                mean_fpr,
+                mean_tpr,
+                color=palette[i],
+                lw=lw,
+                alpha=0.7,
+                label="%s: %0.2f $\pm$ %0.2f" % (item, mean_auc, std_auc),
+            )
+            # Fill inbetween
+            std_tpr = np.std(tprs, axis=0)
+            tprs_upper = np.minimum(mean_tpr + 2 * std_tpr, 1)
+            tprs_lower = np.maximum(mean_tpr - 2 * std_tpr, 0)
+            plt.fill_between(mean_fpr, tprs_lower, tprs_upper, color=palette[i], alpha=0.15)
 
-    ax.plot([0, 1], [0, 1], color="gray", lw=lw, linestyle="--", alpha=0.5, label="Chance: 0.50")  # Chance
+        ax.plot([0, 1], [0, 1], color="gray", lw=lw, linestyle="--", alpha=0.5)  # Chance
+
     ax.set_xlim([0.0, 1.0])
     ax.set_ylim([0.0, 1.05])
     ax.set_xlabel("False Positive Rate")

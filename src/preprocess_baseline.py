@@ -15,7 +15,7 @@ from sklearn.metrics import auc, confusion_matrix, roc_curve
 from sklearn.model_selection import ShuffleSplit, train_test_split, StratifiedShuffleSplit
 from sklearn.svm import SVC  # Support vector classifier
 
-from haberrspd.preprocess import (
+from src.preprocess import (
     universal_backspace_implementer,
     create_MJFF_dataset,
     remap_English_MJFF_participant_ids,

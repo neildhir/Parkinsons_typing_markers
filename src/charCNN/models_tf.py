@@ -21,12 +21,12 @@ from keras.layers import (
 from keras.models import Model
 from talos.model.normalizers import lr_normalizer
 
-from .auxiliary_tf import (
+from src.auxiliary_tf import (
     character_1D_convolution_block,
     character_1D_convolution_maxpool_block_v2,
     character_dense_dropout_block,
 )
-from .data_utilities import binarize, binarize_outshape, binarize_outshape_sentence
+from src.data_utilities import binarize, binarize_outshape, binarize_outshape_sentence
 
 # from talos import live
 # from talos.metrics.keras_metrics import fmeasure_acc

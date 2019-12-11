@@ -8,12 +8,17 @@ from zipfile import ZipFile
 import numpy as np
 import pandas as pd
 from scipy import interp
+from keras.callbacks import EarlyStopping
 from sklearn.metrics import auc as AUC
 from sklearn.metrics import roc_curve
+from sklearn.model_selection import train_test_split
 from talos.utils.load_model import load_model
+
+from tensorflow.keras import backend as K
 from tqdm import tqdm
 
-from haberrspd.plotting import plot_superimposed_roc_curves
+from src.charCNN.data_utilities import create_training_data_keras
+from src.plotting import plot_superimposed_roc_curves
 
 
 class PostprocessTalos:
@@ -94,7 +99,72 @@ class PostprocessTalos:
     def get_fpr_and_tpr(self):
         self.load_trained_model()  # Get trained model
         self.load_test_dataset()
-        self.true_labels_and_label_probs = np.hstack([self.y_test, self.model.predict(self.X_test)])
-        fpr, tpr, _ = roc_curve(self.y_test, self.true_labels_and_label_probs[:, 1], pos_label=1)
+        fpr, tpr, _ = roc_curve(self.y_test, self.model.predict(self.X_test), pos_label=1)
         return fpr, tpr
 
+    def run_n_fold_cross_validation(self, folds=10):
+
+        self.load_trained_model()
+
+        X, y = create_training_data_keras(
+            self.data_root, self.which_information, self.csv_filename, for_plotting_results=True
+        )
+        fold_rates = []
+        for i in tqdm(range(folds)):
+            # Stratefied split
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, stratify=y)
+            # Normal split
+            X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=(1 / 9), random_state=1)
+
+            best_params = self.results.sort_values(by=["val_acc"], ascending=False).iloc[0, :].to_dict()
+            if "Nadam" in best_params["optimizer"]:
+                best_params["optimizer"] = "Nadam"
+            else:
+                best_params["optimizer"] = "Adam"
+            # Compile
+            self.model.compile(loss=best_params["loss.1"], optimizer=best_params["optimizer"], metrics=["accuracy"])
+            # Run and reset weights each time.
+            weights = self.model.get_weights()
+            weights = [np.random.permutation(w.flat).reshape(w.shape) for w in weights]
+            self.model.set_weights(weights)
+            self.model.fit(
+                X_train,
+                y_train,
+                validation_data=(X_val, y_val),
+                verbose=0,
+                class_weight={0: best_params["control_class_weight"], 1: best_params["pd_class_weight"]},
+                callbacks=[EarlyStopping(patience=20, min_delta=0.0001)],
+                batch_size=best_params["batch_size"],
+                epochs=500,  # best_params["epochs"],
+            )
+
+            # Predict
+            fpr, tpr, _ = roc_curve(y_test, self.model.predict(X_test), pos_label=1)
+
+            # Store
+            fold_rates.append((fpr, tpr))
+
+        return fold_rates
+
+
+def mean_std_auc(data):
+    for i, item in enumerate(data.keys()):
+        tprs = []
+        aucs = []
+        # False positive rate
+        mean_fpr = np.linspace(0, 1, len(data[item][0][0]))
+        # Get all results
+        for out in data[item]:
+            fpr, tpr = out
+            # Calculate area under the ROC curve here
+            roc_auc = AUC(fpr, tpr)
+            aucs.append(roc_auc)
+            tprs.append(interp(mean_fpr, fpr, tpr))
+        # Mean ROC curve
+        mean_tpr = np.mean(tprs, axis=0)
+        assert len(mean_tpr) == len(mean_fpr)
+        mean_tpr[-1] = 1.0
+        mean_auc = AUC(mean_fpr, mean_tpr)
+        std_auc = np.std(aucs)
+
+        print("%s: %0.2f $\pm$ %0.2f" % (item, mean_auc, std_auc))

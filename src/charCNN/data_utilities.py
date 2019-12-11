@@ -14,7 +14,7 @@ from tensorflow import cast, float32, one_hot
 from collections import defaultdict
 from math import ceil
 
-from haberrspd.preprocess import modifier_key_replacements
+from src.preprocess import modifier_key_replacements
 
 
 def size_of_optimisation_space(params):
@@ -309,7 +309,7 @@ def create_training_data_keras(
         return X_train, X_test, X_val, y_train, y_test, y_val, max_sentence_length, alphabet_size
     else:
         # When we plot results we just want the processed full dataset.
-        return X, array(y).reshape(-1, 1)
+        return X, array(y)
 
 
 def uk_and_spanish_keyboard_keys_to_2d_coordinates_mjff(typed_sentence, lower_keyboard, upper_keyboard) -> array:

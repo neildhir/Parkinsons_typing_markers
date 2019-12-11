@@ -6,12 +6,12 @@ From Elisa's code base: https://github.com/elisaF/typing-classification/blob/mas
 # coding=utf-8
 from __future__ import division
 import numpy as np
-import haberrspd.helper_functions as helper
+import src.helper_functions as helper
 import logging
 
-logger = logging.getLogger('keyboard_distance')
+logger = logging.getLogger("keyboard_distance")
 logger.setLevel(logging.DEBUG)
-fh = logging.FileHandler('keyboard_distance.log')
+fh = logging.FileHandler("keyboard_distance.log")
 logger.addHandler(fh)
 
 # QWERTY Keyboard Map for US English
@@ -63,27 +63,47 @@ class KeyboardDistance:
         self.initialize(language)
 
     def initialize(self, language):
-        spanish_lower = np.matrix([[u'º', u'1', u'2', u'3', u'4', u'5', u'6', u'7', u'8', u'9', u'0', u"'", u'¡'],
-                                   [None, u'q', u'w', u'e', u'r', u't', u'y', u'u', u'i', u'o', u'p', u"`", u'+'],
-                                   [None, u'a', u's', u'd', u'f', u'g', u'h', u'j', u'k', u'l', u'ñ', u"´", u'ç'],
-                                   [u'<', u'z', u'x', u'c', u'v', u'b', u'n', u'm', u',', u'.', u'-', None, None],
-                                   [None, None, None, u' ', u' ', u' ', u' ', u' ', None, None, None, None, None]], dtype='U')
-        spanish_upper = np.matrix([[u'ª', u'!', u'"', u'·', u'$', u'%', u'&', u'/', u'(', u')', u'=', u'?', u'¿'],
-                                   [None, u'Q', u'W', u'E', u'R', u'T', u'Y', u'U', u'I', u'O', u'P', u'^', u'*'],
-                                   [None, u'A', u'S', u'D', u'F', u'G', u'H', u'J', u'K', u'L', u'Ñ', u'¨', u'Ç'],
-                                   [u'>', u'Z', u'X', u'C', u'V', u'B', u'N', u'M', u';', u':', u'_', None, None],
-                                   [None, None, None, u' ', u' ', u' ', u' ', u' ', None, None, None, None, None]], dtype='U')
+        spanish_lower = np.matrix(
+            [
+                [u"º", u"1", u"2", u"3", u"4", u"5", u"6", u"7", u"8", u"9", u"0", u"'", u"¡"],
+                [None, u"q", u"w", u"e", u"r", u"t", u"y", u"u", u"i", u"o", u"p", u"`", u"+"],
+                [None, u"a", u"s", u"d", u"f", u"g", u"h", u"j", u"k", u"l", u"ñ", u"´", u"ç"],
+                [u"<", u"z", u"x", u"c", u"v", u"b", u"n", u"m", u",", u".", u"-", None, None],
+                [None, None, None, u" ", u" ", u" ", u" ", u" ", None, None, None, None, None],
+            ],
+            dtype="U",
+        )
+        spanish_upper = np.matrix(
+            [
+                [u"ª", u"!", u'"', u"·", u"$", u"%", u"&", u"/", u"(", u")", u"=", u"?", u"¿"],
+                [None, u"Q", u"W", u"E", u"R", u"T", u"Y", u"U", u"I", u"O", u"P", u"^", u"*"],
+                [None, u"A", u"S", u"D", u"F", u"G", u"H", u"J", u"K", u"L", u"Ñ", u"¨", u"Ç"],
+                [u">", u"Z", u"X", u"C", u"V", u"B", u"N", u"M", u";", u":", u"_", None, None],
+                [None, None, None, u" ", u" ", u" ", u" ", u" ", None, None, None, None, None],
+            ],
+            dtype="U",
+        )
 
-        english_lower = np.matrix([[u'`', u'1', u'2', u'3', u'4', u'5', u'6', u'7', u'8', u'9', u'0', u'-', u'=', None],
-                                   [None, u'q', u'w', u'e', u'r', u't', u'y', u'u', u'i', u'o', u'p', '[', ']', '\\'],
-                                   [None, u'a', u's', u'd', u'f', u'g', u'h', u'j', u'k', u'l', u';', u"'", None, None],
-                                   [None, u'z', u'x', u'c', u'v', u'b', u'n', u'm', u',', u'.', u'/', None, None, None],
-                                   [None, None, None, u' ', u' ', u' ', u' ', u' ', None, None, None, None, None, None]], dtype='U')
-        english_upper = np.matrix([[u'~', u'!', u'@', u'#', u'$', u'%', u'^', u'&', u'*', u'(', u')', u'_', u'+', None],
-                                   [None, u'Q', u'W', u'E', u'R', u'T', u'Y', u'U', u'I', u'O', u'P', u'{', u'}', u'|'],
-                                   [None, u'A', u'S', u'D', u'F', u'G', u'H', u'J', u'K', u'L', u':', u'"', None, None],
-                                   [None, u'Z', u'X', u'C', u'V', u'B', u'N', u'M', u'<', u'>', u'?', None, None, None],
-                                   [None, None, None, ' ', ' ', ' ', ' ', ' ', None, None, None, None, None, None]], dtype='U')
+        english_lower = np.matrix(
+            [
+                [u"`", u"1", u"2", u"3", u"4", u"5", u"6", u"7", u"8", u"9", u"0", u"-", u"=", None],
+                [None, u"q", u"w", u"e", u"r", u"t", u"y", u"u", u"i", u"o", u"p", "[", "]", "\\"],
+                [None, u"a", u"s", u"d", u"f", u"g", u"h", u"j", u"k", u"l", u";", u"'", None, None],
+                [None, u"z", u"x", u"c", u"v", u"b", u"n", u"m", u",", u".", u"/", None, None, None],
+                [None, None, None, u" ", u" ", u" ", u" ", u" ", None, None, None, None, None, None],
+            ],
+            dtype="U",
+        )
+        english_upper = np.matrix(
+            [
+                [u"~", u"!", u"@", u"#", u"$", u"%", u"^", u"&", u"*", u"(", u")", u"_", u"+", None],
+                [None, u"Q", u"W", u"E", u"R", u"T", u"Y", u"U", u"I", u"O", u"P", u"{", u"}", u"|"],
+                [None, u"A", u"S", u"D", u"F", u"G", u"H", u"J", u"K", u"L", u":", u'"', None, None],
+                [None, u"Z", u"X", u"C", u"V", u"B", u"N", u"M", u"<", u">", u"?", None, None, None],
+                [None, None, None, " ", " ", " ", " ", " ", None, None, None, None, None, None],
+            ],
+            dtype="U",
+        )
 
         if language.lower() == "english":
             self.qwerty_grid = english_lower
@@ -92,9 +112,9 @@ class KeyboardDistance:
             self.qwerty_grid = spanish_lower
             self.QWERTY_grid = spanish_upper
         else:
-            raise ValueError('The language ' + language + ' is not supported yet!')
+            raise ValueError("The language " + language + " is not supported yet!")
 
-        self.average_x, self.average_y = self.qwerty_grid.shape[1]/2, self.qwerty_grid.shape[0]/2
+        self.average_x, self.average_y = self.qwerty_grid.shape[1] / 2, self.qwerty_grid.shape[0] / 2
         logger.debug("Average locations are : " + str(self.average_x) + ", " + str(self.average_y))
 
     def get_location(self, first_char, second_char):
@@ -126,7 +146,7 @@ class KeyboardDistance:
         loc2_column = loc2[1][0]
 
         # Handle spacebar case
-        if first_char == ' ':
+        if first_char == " ":
             if 3 <= loc2_column <= 7:
                 loc1_column = loc2_column
             elif loc2_column < 3:
@@ -134,7 +154,7 @@ class KeyboardDistance:
             elif loc2_column > 7:
                 loc1_column = 7
 
-        if second_char == ' ':
+        if second_char == " ":
             if 3 <= loc1_column <= 7:
                 loc2_column = loc1_column
             elif loc1_column < 3:
@@ -163,7 +183,7 @@ class KeyboardDistance:
                 dist = 1
             else:
                 logger.debug("other")
-                dist = np.sqrt(np.square(x)+np.square(y))
+                dist = np.sqrt(np.square(x) + np.square(y))
         return dist
 
     def get_hand(self, char):
@@ -181,19 +201,19 @@ class KeyboardDistance:
 
         # special case for spacebar, can be typed with either hand
         if loc_row == 4:
-            return 's'
+            return "s"
         else:
             if loc_column <= 5:
-                return 'l'
+                return "l"
             else:
-                return 'r'
+                return "r"
 
     def same_hand(self, first_char, second_char):
         hand_first = self.get_hand(first_char)
         hand_second = self.get_hand(second_char)
         if hand_first is None or hand_second is None:
             return False
-        elif hand_first == 's' or hand_second == 's':
+        elif hand_first == "s" or hand_second == "s":
             return True
         else:
             return hand_first == hand_second

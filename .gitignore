@@ -1,11 +1,8 @@
 # Ignore data folder so we don't push the data to the repo
-data/MJFF/raw/
-data/MJFF/archive/
-data/MRC/archive/
-data/MRC/*.csv
-data/MRC/*.pkl
-data/test_data/
+data/
 results/
+.ipynb_checkpoints
+.vscode
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

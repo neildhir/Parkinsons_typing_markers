@@ -14,7 +14,7 @@ import pandas as pd
 from nltk.metrics import edit_distance  # Levenshtein
 from scipy.stats import gamma, gengamma, lognorm
 
-from haberrspd.__init_paths import *  # One should not do this, but here it is fine
+from src.__init_paths import *  # One should not do this, but here it is fine
 
 # ------------------------------------------ MRC------------------------------------------ #
 
