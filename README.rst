@@ -5,6 +5,7 @@ Parkinson’s Disease can be understood as a disorder of motor habits. A predict
 
 Models
 ---
+
 * Sentence classification via neural NLP.
 * (Grammar error correction via neural NLP) this is not currently being pursued but it remains a good idea.
 
@@ -18,11 +19,24 @@ Data augmentation
 [New section as of 11/12/2019]
 
 - Consider novel methods for data augmentation incl:
-    - Use the "keyboard coordinate" approach
+    - Keyboard matrix approach
     - Sample slice matrices from all concatenated typed sentences, per subject, converted to one-hot encoding
 
-Relevant
+[keyboard matrix for a sentence]
+.. image:: https://https://github.com/wagglefoot/habitual_errors_NLP/tree/master/figures/keyboard_matrix.png
+
+[slice-sampling a large one-hot encoded matrix of all sentences per subject]
+.. image:: https://https://github.com/wagglefoot/habitual_errors_NLP/tree/master/figures/slice_sampling.png
+
+New modelling paradigms [new from 11/12/2019]
 --------
+
+- Do not use hyperparameter optimisation, not clear that it adds much
+- Rebuild 1D convolutions from scratch, and progressively add complexity
+- Add more early callbacks to prevent overfitting
+- The model needs to be changed to take into account new data augmentation approaches
+    - Keyboard matrix
+    - Slice sampling all concatenated sentences per subject
 
 
 Features
