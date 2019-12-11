@@ -22,11 +22,10 @@ Data augmentation
     - Keyboard matrix approach
     - Sample slice matrices from all concatenated typed sentences, per subject, converted to one-hot encoding
 
-[keyboard matrix for a sentence]
-.. image:: https://https://github.com/wagglefoot/habitual_errors_NLP/tree/master/figures/keyboard_matrix.png
 
-[slice-sampling a large one-hot encoded matrix of all sentences per subject]
-.. image:: https://https://github.com/wagglefoot/habitual_errors_NLP/tree/master/figures/slice_sampling.png
+![keyboard matrix for a sentence](https://https://github.com/wagglefoot/habitual_errors_NLP/tree/master/figures/keyboard_matrix.png)
+![slice-sampling a large one-hot encoded matrix of all sentences per subject](https://https://github.com/wagglefoot/habitual_errors_NLP/tree/master/figures/slice_sampling.png)
+
 
 New modelling paradigms [new from 11/12/2019]
 --------
