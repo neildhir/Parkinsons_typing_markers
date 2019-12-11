@@ -4,7 +4,7 @@ Natural language processing for habitual error detection
 Parkinson’s Disease can be understood as a disorder of motor habits. A prediction of this theory is that early stage Parkinson’s patients will display fewer errors caused by interference from previously over-learned behaviours. We test investigate this prediction in the domain of skilled typing, where actions are easy to record and errors easy to identify.
 
 Models
----
+-------
 
 * Sentence classification via neural NLP.
 * (Grammar error correction via neural NLP) this is not currently being pursued but it remains a good idea.
@@ -15,17 +15,20 @@ Goal
 Design an easy and simple test that would give early warning that habitual control is starting to degrade.
 
 Data augmentation
----
+-------
 [New section as of 11/12/2019]
 
 - Consider novel methods for data augmentation incl:
     - Keyboard matrix approach
     - Sample slice matrices from all concatenated typed sentences, per subject, converted to one-hot encoding
 
+**Keyboard matrix**
 
-![keyboard matrix for a sentence](https://https://github.com/wagglefoot/habitual_errors_NLP/tree/master/figures/keyboard_matrix.png)
-![slice-sampling a large one-hot encoded matrix of all sentences per subject](https://https://github.com/wagglefoot/habitual_errors_NLP/tree/master/figures/slice_sampling.png)
+.. image:: ./figures/keyboard_matrix.png
 
+**Slice sampling**
+
+.. image:: ./figures/slice_sampling.png
 
 New modelling paradigms [new from 11/12/2019]
 --------
