@@ -14,7 +14,7 @@ import pandas as pd
 from nltk.metrics import edit_distance  # Levenshtein
 from scipy.stats import gamma, gengamma, lognorm
 
-from src.__init_paths import *  # One should not do this, but here it is fine
+from .__init_paths import *  # One should not do this, but here it is fine
 
 # ------------------------------------------ MRC------------------------------------------ #
 
@@ -813,7 +813,7 @@ def dataset_summary_statistics(df: pd.DataFrame):
         Preprocessed pandas dataframe.
     """
     sentence_lengths = np.stack([np.char.str_len(i) for i in df.Preprocessed_typed_sentence.unique()])
-    print("\nTotal number of study subjects: %d" % (len(df.Patient_ID.unique())))
+    print("\nTotal number of study subjects: %d" % (len(df.Participant_ID.unique())))
     print("Number of sentences typed by PD patients: %d" % (len(df.loc[df.Diagnosis == 1])))
     print("Number of sentences typed by controls: %d" % (len(df.loc[df.Diagnosis == 0])))
     print("Average sentence length: %05.2f" % sentence_lengths.mean())
@@ -1524,7 +1524,7 @@ def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame) -
             )
         )
     df = pd.concat(final_out, axis=0)
-    df.columns = ["Patient_ID", "Diagnosis", "Sentence_ID", "Preprocessed_typed_sentence"]
+    df.columns = ["Participant_ID", "Diagnosis", "Sentence_ID", "Preprocessed_typed_sentence"]
 
     # Final check for empty values
     df["Preprocessed_typed_sentence"].replace("", np.nan, inplace=True)
@@ -1573,7 +1573,7 @@ def create_dataframe_from_processed_data_mrc(my_dict: dict, location_dict: dict,
             )
         )
     df = pd.concat(final_out, axis=0)
-    df.columns = ["Patient_ID", "Diagnosis", "Sentence_ID", "Preprocessed_typed_sentence", "Preprocessed_locations"]
+    df.columns = ["Participant_ID", "Diagnosis", "Sentence_ID", "Preprocessed_typed_sentence", "Preprocessed_locations"]
 
     # Final check for empty values
     df["Preprocessed_typed_sentence"].replace("", np.nan, inplace=True)
@@ -1587,10 +1587,10 @@ def create_dataframe_from_processed_data_mrc(my_dict: dict, location_dict: dict,
 
 def remap_English_MJFF_participant_ids(df):
     replacement_ids = {}
-    for the_str in set(df.Patient_ID):
+    for the_str in set(df.Participant_ID):
         base = str("".join(map(str, [int(s) for s in the_str.split()[0] if s.isdigit()])))
         replacement_ids[the_str] = base
-    return df.replace({"Patient_ID": replacement_ids})
+    return df.replace({"Participant_ID": replacement_ids})
 
 
 def create_MJFF_dataset(

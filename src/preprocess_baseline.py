@@ -111,8 +111,8 @@ def calculate_iki_and_ed_baseline(
                         range(L)
                     ), "Indices to remove: {} -- total length of timestamp vector: {}".format(removed_chars_indx, L)
                     # Adjust actual inter-key-intervals
-                    # iki = corrected_inter_key_intervals[sentence][participant].drop(index=removed_chars_indx)
-                    iki = np.delete(corrected_inter_key_intervals[sentence][participant], removed_chars_indx)
+                    iki = np.delete(corrected_inter_key_intervals[sentence][participant], removed_chars_indx)[1:]
+                    assert ~np.isnan(np.sum(iki))
                     # Calculate edit distance
                     reference_sentence = select_reference_sentence(which_dataset, sentence, participant, ref)
                     ed = edit_distance("".join(corrected_character_sentence), reference_sentence)
@@ -120,6 +120,7 @@ def calculate_iki_and_ed_baseline(
             elif invokation_type == -1:
                 # Uncorrected IKI extracted here
                 iki = corrected_inter_key_intervals[sentence][participant][1:]
+                assert ~np.isnan(np.sum(iki))
                 # Calculate edit distance
                 reference_sentence = select_reference_sentence(which_dataset, sentence, participant, ref)
                 ed = edit_distance(
@@ -127,42 +128,35 @@ def calculate_iki_and_ed_baseline(
                     reference_sentence,
                 )
             else:
-                # TODO: clean this up for other options
                 raise ValueError
 
             # Append to list which we'll pass to a dataframe in subsequent cells
             if which_dataset == "mjff_english" or which_dataset == "mjff_spanish":
                 # MJFF
                 diagnosis = int(df_meta.loc[(df_meta.participant_id == participant), "diagnosis"])
-                col_names = ["Participant_ID", "Sentence_ID", "Diagnosis", "Mean_IKI", "Var_IKI", "Edit_Distance"]
                 # Data for dataframe
                 data.append((participant, sentence, diagnosis, iki.mean(), iki.var(), ed))
             else:
                 # MRC
                 diagnosis = int(df[df.participant_id == participant].diagnosis.unique())
                 medication = int(df[df.participant_id == participant].medication.unique())
-                col_names = [
-                    "Participant_ID",
-                    "Sentence_ID",
-                    "Diagnosis",
-                    "Medication",
-                    "Mean_IKI",
-                    "Var_IKI",
-                    "Edit_Distance",
-                ]
-                # Data for dataframe
+                # Data for dataframe (note the inclusion of medication)
                 data.append((participant, sentence, diagnosis, medication, iki.mean(), iki.var(), ed))
 
-    if which_dataset == "mjff_english":
+    if which_dataset == "mjff_english" or which_dataset == "mjff_spanish":
+        col_names = ["Participant_ID", "Sentence_ID", "Diagnosis", "Mean_IKI", "Var_IKI", "Edit_Distance"]
         results = remap_English_MJFF_participant_ids(pd.DataFrame(data, columns=col_names))
     else:
+        col_names = ["Participant_ID", "Sentence_ID", "Diagnosis", "Medication", "Mean_IKI", "Var_IKI", "Edit_Distance"]
         results = pd.DataFrame(data, columns=col_names)
 
     results.dropna(inplace=True)
     results.reset_index(drop=True, inplace=True)
     assert not results.isnull().values.any()
-
-    assert len(df.participant_id.unique()) == len(results.Participant_ID.unique())
+    assert len(df.participant_id.unique()) == len(results.Participant_ID.unique()), (
+        len(df.participant_id.unique()),
+        len(results.Participant_ID.unique()),
+    )
 
     return results
 

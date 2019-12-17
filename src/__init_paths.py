@@ -10,9 +10,9 @@ def add_path(path):
 
 
 this_dir = osp.dirname(__file__)
-p = this_dir.split("haberrspd")[0]
+p = this_dir.split("src")[0]
 # Add lib to PYTHONPATH
-lib_path = osp.join(p, "haberrspd")
+lib_path = osp.join(p, "src")
 # Add to working space
 add_path(lib_path)
 
