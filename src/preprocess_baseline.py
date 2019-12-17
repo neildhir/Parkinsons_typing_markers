@@ -12,15 +12,15 @@ import pandas as pd
 from nltk import edit_distance
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import auc, confusion_matrix, roc_curve
-from sklearn.model_selection import ShuffleSplit, train_test_split, StratifiedShuffleSplit
+from sklearn.model_selection import ShuffleSplit, StratifiedShuffleSplit, train_test_split
 from sklearn.svm import SVC  # Support vector classifier
 
 from src.preprocess import (
-    universal_backspace_implementer,
     create_MJFF_dataset,
+    iki_pause_correction,
     remap_English_MJFF_participant_ids,
     select_attempt,
-    iki_pause_correction,
+    universal_backspace_implementer,
 )
 
 
@@ -78,14 +78,11 @@ def calculate_iki_and_ed_baseline(
     else:
         # Corrected inter-key-intervals (i.e. timestamp difference / delta)
         corrected_inter_key_intervals, iki_replacement_stats = iki_pause_correction(df)
-        # If no local file store it
-        # pickle.dump(
-        #     corrected_inter_key_intervals,
-        #     open(data_root / "sentence_level_pause_correct_{}.pkl".format(which_dataset), "wb"),
-        # )
         if verbose:
             print("IKI replacement stats:\n")
             pprint.pprint(iki_replacement_stats, width=1)
+
+    assert len(df.sentence_id.unique()) == len(corrected_inter_key_intervals.keys())
 
     data = []
     # Loop over sentence IDs
@@ -114,7 +111,8 @@ def calculate_iki_and_ed_baseline(
                         range(L)
                     ), "Indices to remove: {} -- total length of timestamp vector: {}".format(removed_chars_indx, L)
                     # Adjust actual inter-key-intervals
-                    iki = corrected_inter_key_intervals[sentence][participant].drop(index=removed_chars_indx)
+                    # iki = corrected_inter_key_intervals[sentence][participant].drop(index=removed_chars_indx)
+                    iki = np.delete(corrected_inter_key_intervals[sentence][participant], removed_chars_indx)
                     # Calculate edit distance
                     reference_sentence = select_reference_sentence(which_dataset, sentence, participant, ref)
                     ed = edit_distance("".join(corrected_character_sentence), reference_sentence)
@@ -136,7 +134,7 @@ def calculate_iki_and_ed_baseline(
             if which_dataset == "mjff_english" or which_dataset == "mjff_spanish":
                 # MJFF
                 diagnosis = int(df_meta.loc[(df_meta.participant_id == participant), "diagnosis"])
-                col_names = ["Patient_ID", "Sentence_ID", "Diagnosis", "Mean_IKI", "Var_IKI", "Edit_Distance"]
+                col_names = ["Participant_ID", "Sentence_ID", "Diagnosis", "Mean_IKI", "Var_IKI", "Edit_Distance"]
                 # Data for dataframe
                 data.append((participant, sentence, diagnosis, iki.mean(), iki.var(), ed))
             else:
@@ -144,7 +142,7 @@ def calculate_iki_and_ed_baseline(
                 diagnosis = int(df[df.participant_id == participant].diagnosis.unique())
                 medication = int(df[df.participant_id == participant].medication.unique())
                 col_names = [
-                    "Patient_ID",
+                    "Participant_ID",
                     "Sentence_ID",
                     "Diagnosis",
                     "Medication",
@@ -163,6 +161,8 @@ def calculate_iki_and_ed_baseline(
     results.dropna(inplace=True)
     results.reset_index(drop=True, inplace=True)
     assert not results.isnull().values.any()
+
+    assert len(df.participant_id.unique()) == len(results.Participant_ID.unique())
 
     return results
 

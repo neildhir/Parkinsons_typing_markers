@@ -858,7 +858,7 @@ def iki_pause_correction(
     sentences = sorted(set(df.sentence_id))  # NOTE: set() is weakly random
 
     # Store corrected sentences here
-    corrected_timestamp_diff = defaultdict(dict)
+    corrected_ikis = defaultdict(dict)
 
     # Response time modelling
     pause_funcs = {"gengamma": gengamma.fit, "lognorm": lognorm.fit, "gamma": gamma.fit}
@@ -866,23 +866,23 @@ def iki_pause_correction(
     pause_first_moment = {"gengamma": gengamma.mean, "lognorm": lognorm.mean, "gamma": gamma.mean}
 
     # Storage for critical values
-    pause_replacement_stats = {}
+    pause_replacement_statistics = {}
 
     # Loop over all sentences
     for sentence in sentences:
-        timestamp_diffs = []
+        sentence_iki = []
         # Loop over all subjects which have typed this sentence
         for subject in df.loc[(df.sentence_id == sentence)].participant_id.unique():
 
             # Get all delta timestamps for this sentence, across all subjects
             tmp = df.loc[(df.sentence_id == sentence) & (df.participant_id == subject)].timestamp.diff().tolist()
             # Store for later
-            corrected_timestamp_diff[sentence][subject] = np.array(tmp)
+            corrected_ikis[sentence][subject] = np.array(tmp)
             # Append to get statistics over all participants
-            timestamp_diffs.extend(tmp)
+            sentence_iki.extend(tmp)
 
         # Move to numpy array for easier computation
-        x = np.array(timestamp_diffs)
+        x = np.array(sentence_iki)
         # Remove all NANs and remove all NEGATIVE values (this removes the first NaN value too)
         x = x[~np.isnan(x)]
         # Have to do in two operations because of NaN presence
@@ -900,7 +900,7 @@ def iki_pause_correction(
         assert replacement_value > 0, "INFO:\n\t value: {} \n\t sentence ID: {}".format(replacement_value, sentence)
 
         # Store for replacement operation in next loop
-        pause_replacement_stats[sentence] = (cut_off_value, replacement_value)
+        pause_replacement_statistics[sentence] = (cut_off_value, replacement_value)
 
     # Search all delta timestamps and replace which exeed cut_off_value
     for sentence in sentences:
@@ -908,20 +908,20 @@ def iki_pause_correction(
         for subject in df.loc[(df.sentence_id == sentence)].participant_id.unique():
 
             # Make temporary conversion to numpy array
-            x = corrected_timestamp_diff[sentence][subject][1:]  # (remove the first entry as it is a NaN)
-            corrected_timestamp_diff[sentence][subject] = np.concatenate(  # Add back NaN to maintain index order
+            x = corrected_ikis[sentence][subject][1:]  # (remove the first entry as it is a NaN)
+            corrected_ikis[sentence][subject] = np.concatenate(  # Add back NaN to maintain index order
                 (
                     [np.nan],
                     # Two conditions are used here
                     np.where(
-                        np.logical_or(x > pause_replacement_stats[sentence][0], x < 0),
-                        pause_replacement_stats[sentence][1],
+                        np.logical_or(x > pause_replacement_statistics[sentence][0], x < 0),
+                        pause_replacement_statistics[sentence][1],
                         x,
                     ),
                 )
             )
 
-    return corrected_timestamp_diff, pause_replacement_stats
+    return corrected_ikis, pause_replacement_statistics
 
 
 def create_char_iki_extended_data(
