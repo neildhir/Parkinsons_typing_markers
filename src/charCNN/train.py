@@ -12,9 +12,9 @@ from torch import nn, optim
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
-from src.charCNN.auxiliary import count_trainable_parameters, make_MJFF_data_loader, save_checkpoint
+from src.charCNN.auxiliary_torch import count_trainable_parameters, make_MJFF_data_loader, save_checkpoint
 from src.charCNN.metric import print_f_score
-from src.charCNN.model import CharCNN
+from src.charCNN.models_torch import CharCNN
 
 
 def train(train_loader, dev_loader, model, args):

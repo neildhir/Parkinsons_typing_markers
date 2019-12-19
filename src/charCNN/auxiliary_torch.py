@@ -4,12 +4,37 @@ import json
 import csv
 
 
+class Config(dict):
+    """
+    Simple class to hold the model and training values.
+    Example
+    -------
+    config = Config(
+        testing=True,
+        seed=1,
+        batch_size=8,
+        lr=1e-4,
+        bidirectional=True,
+        patience=3,
+        epochs=10,
+        hidden_size=256,
+    )
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+    def set(self, key, val):
+        self[key] = val
+        setattr(self, key, val)
+
+
 class MJFF_original(Dataset):
-    def __init__(self,
-                 label_data_path: str,
-                 alphabet_path: str,
-                 max_sample_length: int,
-                 load_very_long_sentences: bool = False):
+    def __init__(
+        self, label_data_path: str, alphabet_path: str, max_sample_length: int, load_very_long_sentences: bool = False
+    ):
         """
         Create MJFF dataset object.
 
@@ -41,16 +66,16 @@ class MJFF_original(Dataset):
 
     def load_alphabet(self, alphabet_path):
         with open(alphabet_path) as f:
-            self.alphabet = ''.join(json.load(f))
+            self.alphabet = "".join(json.load(f))
 
     def load(self, label_data_path, lowercase=True):
         self.label = []
         self.data = []
-        with open(label_data_path, 'r') as f:
-            rdr = csv.reader(f, delimiter=',', quotechar='"')
+        with open(label_data_path, "r") as f:
+            rdr = csv.reader(f, delimiter=",", quotechar='"')
             # num_samples = sum(1 for row in rdr)
             for index, row in enumerate(rdr):
-                txt = ' '.join(row[1:])
+                txt = " ".join(row[1:])
                 if lowercase:
                     txt = txt.lower()
                 # XXX: temporary fix for loading too long sentences
@@ -80,14 +105,14 @@ class MJFF_original(Dataset):
         num_samples = self.__len__()
         label_set = set(self.label)
         num_class = [self.label.count(c) for c in label_set]
-        class_weight = [num_samples/float(self.label.count(c)) for c in label_set]
+        class_weight = [num_samples / float(self.label.count(c)) for c in label_set]
         return class_weight, num_class
 
 
 def save_checkpoint(model, state, filename):
     model_is_cuda = next(model.parameters()).is_cuda
     # model = model.module if model_is_cuda else model  # Only use if we have parallel GPUs available
-    state['state_dict'] = model.state_dict()
+    state["state_dict"] = model.state_dict()
     torch.save(state, filename)
 
 
@@ -107,12 +132,14 @@ def count_trainable_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-def make_MJFF_data_loader(dataset_path: str,
-                          alphabet_path: str,
-                          max_sample_length: int,
-                          load_very_long_sentences: bool,
-                          batch_size: int,
-                          num_workers: int):
+def make_MJFF_data_loader(
+    dataset_path: str,
+    alphabet_path: str,
+    max_sample_length: int,
+    load_very_long_sentences: bool,
+    batch_size: int,
+    num_workers: int,
+):
     """
     Function to create a Torch readable data object.
 
@@ -130,15 +157,14 @@ def make_MJFF_data_loader(dataset_path: str,
         [description]
     """
     print("Loading data from {}".format(dataset_path))
-    dataset = MJFF_original(label_data_path=dataset_path,
-                            alphabet_path=alphabet_path,
-                            max_sample_length=max_sample_length, load_very_long_sentences=load_very_long_sentences)
+    dataset = MJFF_original(
+        label_data_path=dataset_path,
+        alphabet_path=alphabet_path,
+        max_sample_length=max_sample_length,
+        load_very_long_sentences=load_very_long_sentences,
+    )
 
     # Torch dataloader created here
-    dataset_loader = DataLoader(dataset,
-                                batch_size=batch_size,
-                                num_workers=num_workers,
-                                drop_last=True,
-                                shuffle=True)
+    dataset_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, drop_last=True, shuffle=True)
 
     return dataset, dataset_loader

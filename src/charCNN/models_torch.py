@@ -10,6 +10,44 @@ from torch.autograd import Variable
 
 
 # TODO: add attention (maybe): https://mlwhiz.com/blog/2019/03/09/deeplearning_architectures_text_classification/
+# TODO: add grad cam: https://medium.com/@stepanulyanin/implementing-grad-cam-in-pytorch-ea0937c31e82
+
+
+class SimpleCharCNN(nn.Module):
+    """
+    [18/12/19] : new model for prototyping the character CNN approach.
+    """
+
+    def __init__(self, args):
+        super(SimpleCharCNN, self).__init__()
+        """
+        Addendums for convolutions:
+
+        - kernel_size: anything you want. In Zhang's picture, there are 6 different filters with sizes 4, 4, 3, 3, 2, 2, represented by the "vertical" dimension.
+
+        - in_channels (automatically the embedding_size): the size of the embedding - this is somwehat mandatory (in Keras this is automatic and almost invisible), otherwise the multiplications wouldn't use the entire embedding, which is pointless. In the picture, the "horizontal" dimension of the filters is constantly 5 (the same as the word size - this is not a spatial dimension).
+
+        - output_channels (filters): anything you want, but it seems the picture is talking about 1 channel only per filter, since it's totally ignored, and if represented would be something like "depth".
+        """
+        self.convolution_layer_1 = nn.Sequential(
+            # Number of features is the size of the alphabet
+            nn.Conv1d(in_channels=args.alphabet_size, out_channels=16, kernel_size=8, stride=1),
+            nn.ReLU(),
+            # Non-overlapping pooling note
+            nn.MaxPool1d(kernel_size=8, stride=8),  # XXX: why max pool here and not other pooling
+        )
+        self.fully_connected_1 = nn.Linear(2, 1)
+        self.log_softmax = nn.LogSoftmax()
+
+    def forward(self, x):
+        x = self.convolution_layer_1(x)
+        # collapse
+        x = x.view(x.size(0), -1)
+        x = self.fully_connected_1(x)
+        x = self.log_softmax(x)  # TODO: check purpose
+
+        return x
+
 
 class CharCNN(nn.Module):
     """
@@ -55,20 +93,12 @@ class CharCNN(nn.Module):
     def __init__(self, args):
         super(CharCNN, self).__init__()
         self.conv1 = nn.Sequential(
-            nn.Conv1d(args.num_features, 64, kernel_size=16, stride=1),
-            nn.ReLU(),
-            nn.MaxPool1d(kernel_size=8, stride=8)
+            nn.Conv1d(args.num_features, 64, kernel_size=16, stride=1), nn.ReLU(), nn.MaxPool1d(kernel_size=8, stride=8)
         )
         self.conv2 = nn.Sequential(
-            nn.Conv1d(64, 64, kernel_size=16, stride=1),
-            nn.ReLU(),
-            nn.MaxPool1d(kernel_size=4, stride=4)
+            nn.Conv1d(64, 64, kernel_size=16, stride=1), nn.ReLU(), nn.MaxPool1d(kernel_size=4, stride=4)
         )
-        self.fc1 = nn.Sequential(
-            nn.Linear(65408, 512),
-            nn.ReLU(),
-            nn.Dropout(p=args.dropout)
-        )
+        self.fc1 = nn.Sequential(nn.Linear(65408, 512), nn.ReLU(), nn.Dropout(p=args.dropout))
         # self.fc2 = nn.Sequential(
         #     nn.Linear(1024, 512),
         #     nn.ReLU(),
@@ -121,13 +151,13 @@ class CNN_Text(nn.Module):
         self.embed = nn.Embedding(V, D)
         # self.convs1 = [nn.Conv2d(Ci, Co, (K, D)) for K in Ks]
         self.convs1 = nn.ModuleList([nn.Conv2d(Ci, Co, (K, D)) for K in Ks])
-        '''
+        """
         self.conv13 = nn.Conv2d(Ci, Co, (3, D))
         self.conv14 = nn.Conv2d(Ci, Co, (4, D))
         self.conv15 = nn.Conv2d(Ci, Co, (5, D))
-        '''
+        """
         self.dropout = nn.Dropout(args.dropout)
-        self.fc1 = nn.Linear(len(Ks)*Co, C)
+        self.fc1 = nn.Linear(len(Ks) * Co, C)
 
     def conv_and_pool(self, x, conv):
         x = F.relu(conv(x)).squeeze(3)  # (N, Co, W)
@@ -148,12 +178,12 @@ class CNN_Text(nn.Module):
 
         x = torch.cat(x, 1)
 
-        '''
+        """
         x1 = self.conv_and_pool(x,self.conv13) #(N,Co)
         x2 = self.conv_and_pool(x,self.conv14) #(N,Co)
         x3 = self.conv_and_pool(x,self.conv15) #(N,Co)
         x = torch.cat((x1, x2, x3), 1) # (N,len(Ks)*Co)
-        '''
+        """
         x = self.dropout(x)  # (N, len(Ks)*Co)
         logit = self.fc1(x)  # (N, C)
         return logit
@@ -173,7 +203,7 @@ class Highway(nn.Module):
 
     def forward(self, x):
         t = F.sigmoid(self.fc1(x))
-        return torch.mul(t, F.relu(self.fc2(x))) + torch.mul(1-t, x)
+        return torch.mul(t, F.relu(self.fc2(x))) + torch.mul(1 - t, x)
 
 
 class charLM(nn.Module):
@@ -195,12 +225,7 @@ class charLM(nn.Module):
         use_gpu: True or False
     """
 
-    def __init__(self,
-                 char_emb_dim,
-                 word_emb_dim,
-                 vocab_size,
-                 num_char,
-                 use_gpu):
+    def __init__(self, char_emb_dim, word_emb_dim, vocab_size, num_char, use_gpu):
         super(charLM, self).__init__()
         self.char_emb_dim = char_emb_dim
         self.word_emb_dim = word_emb_dim
@@ -218,10 +243,10 @@ class charLM(nn.Module):
         for out_channel, filter_width in self.filter_num_width:
             self.convolutions.append(
                 nn.Conv2d(
-                    1,           # in_channel
+                    1,  # in_channel
                     out_channel,  # out_channel
                     kernel_size=(char_emb_dim, filter_width),  # (height, width)
-                    bias=True
+                    bias=True,
                 )
             )
 
@@ -236,12 +261,14 @@ class charLM(nn.Module):
         # LSTM
         self.lstm_num_layers = 2
 
-        self.lstm = nn.LSTM(input_size=self.highway_input_dim,
-                            hidden_size=self.word_emb_dim,
-                            num_layers=self.lstm_num_layers,
-                            bias=True,
-                            dropout=0.5,
-                            batch_first=True)
+        self.lstm = nn.LSTM(
+            input_size=self.highway_input_dim,
+            hidden_size=self.word_emb_dim,
+            num_layers=self.lstm_num_layers,
+            bias=True,
+            dropout=0.5,
+            batch_first=True,
+        )
 
         # output layer
         self.dropout = nn.Dropout(p=0.5)
@@ -292,7 +319,7 @@ class charLM(nn.Module):
         x = self.dropout(x)
         # [seq_len, num_seq, hidden_size]
 
-        x = x.contiguous().view(lstm_batch_size*lstm_seq_len, -1)
+        x = x.contiguous().view(lstm_batch_size * lstm_seq_len, -1)
         # [num_seq*seq_len, hidden_size]
 
         x = self.linear(x)
