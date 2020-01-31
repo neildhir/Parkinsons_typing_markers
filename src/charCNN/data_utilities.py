@@ -88,7 +88,8 @@ def create_data_objects(df):
             subject_locations.append(df.loc[(df.Patient_ID == i)].Preprocessed_locations.tolist())
 
     # Get the unique set of characters in the alphabet
-    alphabet = set("".join([item for sublist in subject_documents for item in sublist]))
+    # OBS: remember that set() is random so we need to sort it before passing back
+    alphabet = sorted(set("".join([item for sublist in subject_documents for item in sublist])))
 
     return subject_documents, subject_locations, subject_diagnoses, alphabet
 
@@ -228,6 +229,9 @@ def create_training_data_keras(
     print("Total number of characters used in all typed sentences:", alphabet_size)
     alphabet_indices = dict((c, i) for i, c in enumerate(alphabet))
 
+    print("\tAlphabet used:\n")
+    print(alphabet_indices)
+    
     # Initialise tokenizer which maps characters to integers
     tk = Tokenizer(num_words=None, char_level=True)
     # Fit to text: convert all chars to ints
