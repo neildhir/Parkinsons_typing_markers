@@ -166,12 +166,12 @@ def reference_sentences(which_dataset):
 
     if which_dataset == "mjff_english":
         fields = ["MJFF_IDS", "REFERENCE_TEXT"]
-        return pd.read_csv("../aux/sentence_IDs.csv", usecols=fields)
+        return pd.read_csv("../misc/sentence_IDs.csv", usecols=fields)
     elif which_dataset == "mjff_spanish":
-        return pd.read_csv("../aux/spanish_sentence_IDs.csv", header=0)
+        return pd.read_csv("../misc/spanish_sentence_IDs.csv", header=0)
     elif which_dataset == "mrc":
         fields = ["MRC_PATIENT_DATA_IDS", "MRC_CONTROL_DATA_IDS", "REFERENCE_TEXT"]
-        return pd.read_csv("../aux/sentence_IDs.csv", usecols=fields)
+        return pd.read_csv("../misc/sentence_IDs.csv", usecols=fields)
     else:
         raise ValueError
 
