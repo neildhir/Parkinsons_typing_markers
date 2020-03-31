@@ -1,5 +1,5 @@
 from keras.layers import Conv1D, Dense, GlobalMaxPool1D, MaxPooling1D, Dropout
-
+from keras.regularizers import l2
 # =============
 # MODEL BLOCKS
 # =============
@@ -44,6 +44,8 @@ def character_dense_dropout_block(flattened, units, dropout_rates, **params):
             kernel_initializer=params["dense_kernel_initializer"],
             bias_initializer=params["dense_bias_initializer"],
             activation=activation_func,
+            kernel_regularizer=l2(params['kernel_regularizer']),
+            bias_regularizer=l2(params['bias_regularizer']),
         )(flattened)
 
         # Dropout
@@ -91,6 +93,8 @@ def character_1D_convolution_maxpool_block_v2(embedded, nb_filters, filter_lengt
             kernel_initializer=params["conv_kernel_initializer"],
             bias_initializer=params["conv_bias_initializer"],
             activation=params["conv_activation"],
+            kernel_regularizer=l2(params['kernel_regularizer']),
+            bias_regularizer=l2(params['bias_regularizer'])
         )(embedded)
 
         # Max pooling
@@ -101,8 +105,10 @@ def character_1D_convolution_maxpool_block_v2(embedded, nb_filters, filter_lengt
 
 
 def character_1D_convolution_block(
-    embedded, nb_filter=(32, 64), filter_length=(3, 3), subsample=(2, 1), pool_length=(2, 2)
-):
+    embedded, nb_filter=(32, 64),
+        filter_length=(3, 3),
+        subsample=(2, 1),
+        pool_length=(2, 2)):
 
     assert len(nb_filter) == len(filter_length) == len(subsample) == len(pool_length)
 
