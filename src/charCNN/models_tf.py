@@ -75,7 +75,7 @@ def char_lstm_cnn_model(max_sentences_per_subject, max_sentence_length):
     output = Dropout(0.3)(bi_lstm_doc)
     output = Dense(128, activation="relu")(output)
     output = Dropout(0.3)(output)
-    output = Dense(1, activation="sigmoid")(output)
+    output = Dense(2, activation="softmax")(output) #change to 2 and softmax
 
     return Model(outputs=output, inputs=document)
 
@@ -159,7 +159,7 @@ def char_cnn_model_talos(X_train, y_train, X_test, y_test, params):
     flattened = Flatten()(embedded)
 
     # Fully connected layers with (some) dropout
-    dense_units = [params["dense_units_layer_3"], params["dense_units_layer_2"], 1]
+    dense_units = [params["dense_units_layer_3"], params["dense_units_layer_2"], 2] # NEED TO CHANGE 2 - > 1 to rollback to scalar output
     dropout_rates = [params["dropout"], params["dropout"], None]
     final = character_dense_dropout_block(flattened, dense_units, dropout_rates, **params)
 
@@ -172,6 +172,9 @@ def char_cnn_model_talos(X_train, y_train, X_test, y_test, params):
         metrics=["accuracy"],
     )  # , fmeasure_acc])
     # > Fit model
+
+    print(model.summary())
+
     out = model.fit(
         X_train,
         y_train,
