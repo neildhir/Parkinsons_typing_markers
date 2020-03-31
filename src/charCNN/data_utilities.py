@@ -74,18 +74,18 @@ def create_data_objects(df):
     subject_locations = []  # Contains on the index all key locations used by a subject [MRC only]
     subject_diagnoses = defaultdict(dict)  # Contains on the index, the PD diagnosis of a particular subject
 
-    for i in df.Patient_ID.unique():
+    for i in df.Participant_ID.unique():
         # Ensure that all sentences are lower-case (this improves inference further down the pipe)
-        subject_documents.append(df.loc[(df.Patient_ID == i)].Preprocessed_typed_sentence.tolist())
+        subject_documents.append(df.loc[(df.Participant_ID == i)].Preprocessed_typed_sentence.tolist())
 
         # This returns one diagnosis per patient
         # subject_diagnoses.append(df.loc[(df.Patient_ID == i)].Diagnosis.drop_duplicates().tolist()[0])
         # This returns one diagnosis per patient
-        subject_diagnoses[i] = df[(df.Patient_ID == i)].Diagnosis.tolist()
+        subject_diagnoses[i] = df[(df.Participant_ID == i)].Diagnosis.tolist()
 
         if "Preprocessed_locations" in df.columns:
             # We are dealing with MRC data if this is true
-            subject_locations.append(df.loc[(df.Patient_ID == i)].Preprocessed_locations.tolist())
+            subject_locations.append(df.loc[(df.Participant_ID == i)].Preprocessed_locations.tolist())
 
     # Get the unique set of characters in the alphabet
     # OBS: remember that set() is random so we need to sort it before passing back
