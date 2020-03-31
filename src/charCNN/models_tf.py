@@ -182,7 +182,7 @@ def char_cnn_model_talos(X_train, y_train, X_test, y_test, params):
         verbose=2,  # Set to zero if using live plotting of losses
         class_weight={0: params["control_class_weight"], 1: params["pd_class_weight"]},
         # Monitor the loss with early stopping
-        callbacks=[EarlyStopping(patience=15, min_delta=0.0001)],
+        callbacks=[EarlyStopping(patience=15, min_delta=0.0001, monitor='val_loss', restore_best_weights=True)],
         batch_size=params["batch_size"],
         epochs=params["epochs"],
     )
