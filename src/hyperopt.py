@@ -10,6 +10,7 @@ import talos as ta
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
 from keras.optimizers import Adam, Nadam  # Which optimisers to consider
+#from tensorflow.keras.optimizers import Adam
 from numpy import asarray, vstack
 from sklearn.utils import class_weight
 import pickle
@@ -20,6 +21,11 @@ config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 set_session(tf.Session(config=config))
 
+
+
+
+
+
 import src.charCNN.globals  # Global params live here
 from src.charCNN.data_utilities import create_training_data_keras, size_of_optimisation_space
 from src.charCNN.models_tf import char_cnn_model_talos
@@ -28,12 +34,12 @@ from src.charCNN.models_tf import char_cnn_model_talos
 # --- PARSE ADDITIONAL USER SETTINGS
 
 parser = argparse.ArgumentParser(description="CNN text classifier.")
-parser.add_argument("--which_dataset", type=str, default="MJFF", help="Select which dataset [MRC, MJFF] to analyse.")
+parser.add_argument("--which_dataset", type=str, default="MJFF", help="Select which dataset MRC, MJFF to analyse.")
 parser.add_argument(
     "--which_information",
     type=str,
     default="char_time",
-    help="Tells the model which type of data to use for the optimisation [char, char_time, char_time_space].",
+    help="Tells the model which type of data to use for the optimisation  - char, char_time, char_time_space.",
 )
 parser.add_argument(
     "--unique_ID",
@@ -45,7 +51,7 @@ parser.add_argument(
     "--csv_file",
     type=str,
     default="EnglishData-preprocessed_attempt_1.csv",
-    help="CSV file to use for hyperparam optimisation [default is EnglishData-preprocessed_attempt_1.csv.]",
+    help="CSV file to use for hyperparam optimisation - default is EnglishData-preprocessed_attempt_1.csv.",
 )
 
 parser.add_argument(
@@ -55,7 +61,7 @@ parser.add_argument(
     help="Puts a hard limit on the number of parameter permutations that will be entertained.",
 )
 parser.add_argument(
-    "--fraction_limit", type=float, default=None, help=" The fraction of `params` that will be tested (Default is 5%)."
+    "--fraction_limit", type=float, default=None, help=" The fraction of `params` that will be tested  - Default is 5%."
 )
 parser.add_argument("--save_model", type=str, default="y", help="To save model or not.")
 args = parser.parse_args()
@@ -84,25 +90,25 @@ if args.which_information == "char_time_space":
 
 # Note that the more parameters we have in here, the longer this is going to take.
 optimisation_parameters = {
-    "lr": [1, 0.5],  # This is a range not a tuple
-    "conv_output_space": [8, 16, 32],  # ,8],
-    "number_of_large_filters": [2, 3, 4],
-    "number_of_small_filters": [2, 3, 4],
-    "large_filter_length": [8, 16, 32, 64],  # When time is included [20,40,80,160], when not: [10,20,40,80]
-    "small_filter_length": [2, 4, 8, 16],  # [5, 10, 20],
+    "lr": [1],  # This is a range not a tuple
+    "conv_output_space": [64],  # ,8],
+    "number_of_large_filters": [1,3],
+    "number_of_small_filters": [1, 3],
+    "large_filter_length": [6,12],  # When time is included [20,40,80,160], when not: [10,20,40,80]
+    "small_filter_length": [2, 4],  # [5, 10, 20],
     "pool_length": [2, 4],
-    "dense_units_layer_3": [128, 256, 512],  # [32, 64],
-    "dense_units_layer_2": [64, 128, 256],  # [16, 32],
+    "dense_units_layer_3": [128],  # [32, 64],
+    "dense_units_layer_2": [64],  # [16, 32],
     "batch_size": [16, 32],
-    "epochs": [200],
-    "dropout": (0, 0.5, 5),
+    "epochs": [500],
+    "dropout": (0, 0.5, 3),
     "conv_padding": ["same"],
     "conv_kernel_initializer": ["normal"],
     "conv_bias_initializer": ["normal"],
     "dense_kernel_initializer": ["normal"],
     "dense_bias_initializer": ["normal"],
-    "optimizer": [Adam, Nadam],  # If used this way, these have to explicitly imported
-    "loss": ["binary_crossentropy"],  # Loss functions
+    "optimizer": [Adam],  # If used this way, these have to explicitly imported
+    "loss": ["sparse_categorical_crossentropy"],  # Loss functions
     "conv_activation": ["relu"],
     "dense_activation": ["relu"],
     "last_activation": ["sigmoid"],
@@ -116,10 +122,10 @@ optimisation_parameters = {
 if "time" in args.which_information:
     del optimisation_parameters["large_filter_length"]
     del optimisation_parameters["small_filter_length"]
-    optimisation_parameters["large_filter_length"] = [32, 64, 128, 256]
-    optimisation_parameters["small_filter_length"] = [4, 8, 16, 32]
+    optimisation_parameters["large_filter_length"] = [8, 128]
+    optimisation_parameters["small_filter_length"] = [2, 16]
     del optimisation_parameters["pool_length"]
-    optimisation_parameters["pool_length"] = [4, 8, 16]
+    optimisation_parameters["pool_length"] = [4, 8]
 
 space_size = size_of_optimisation_space(optimisation_parameters)
 print("\nThe _RAW_ (i.e. not-yet-reduced) parameter permutation space is: {}\n".format(space_size))
