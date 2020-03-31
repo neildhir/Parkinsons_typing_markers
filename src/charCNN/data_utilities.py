@@ -1,6 +1,6 @@
 import itertools
 from typing import Tuple
-
+import numpy as np
 import keras.backend as K
 from keras import callbacks
 from keras.preprocessing.sequence import pad_sequences
@@ -65,7 +65,7 @@ class LossHistory(callbacks.Callback):
         self.accuracies.append(logs.get("acc"))
 
 
-def create_data_objects(df):
+def create_data_objects(df,fold_dict):
     """
     Note that the interpretation here is that each document is comensurate with a subject
     in the dataset.
@@ -73,10 +73,12 @@ def create_data_objects(df):
     subject_documents = []  # Contains on the index all sentences typed by a particular subject
     subject_locations = []  # Contains on the index all key locations used by a subject [MRC only]
     subject_diagnoses = defaultdict(dict)  # Contains on the index, the PD diagnosis of a particular subject
-
+    subject_id = []
     for i in df.Participant_ID.unique():
         # Ensure that all sentences are lower-case (this improves inference further down the pipe)
-        subject_documents.append(df.loc[(df.Participant_ID == i)].Preprocessed_typed_sentence.tolist())
+        docs = df.loc[(df.Participant_ID == i)].Preprocessed_typed_sentence.tolist()
+        subject_documents.append(docs)
+        subject_id.extend([i] * len(docs))
 
         # This returns one diagnosis per patient
         # subject_diagnoses.append(df.loc[(df.Patient_ID == i)].Diagnosis.drop_duplicates().tolist()[0])
@@ -91,7 +93,7 @@ def create_data_objects(df):
     # OBS: remember that set() is random so we need to sort it before passing back
     alphabet = sorted(set("".join([item for sublist in subject_documents for item in sublist])))
 
-    return subject_documents, subject_locations, subject_diagnoses, alphabet
+    return subject_documents, subject_locations, subject_diagnoses, np.asarray(subject_id), alphabet
 
 
 def create_training_data(DATA_ROOT, data_string, which_level="sentence"):
@@ -217,8 +219,17 @@ def create_training_data_keras(
     else:
         df = read_csv(DATA_ROOT / which_information / csv_file, header=0)
 
+    #read fold file
+    fold_df = read_csv(DATA_ROOT / 'subject_lvl_fold.csv')
+    fold_df_reduced = fold_df[['Patient_ID','fold']].drop_duplicates(keep='first')
+    fold_dict = {subject : fold for subject, fold in zip(fold_df_reduced.Patient_ID, fold_df_reduced.fold)}
+
+
+
     # Get relevant data objects
-    subject_documents, subject_locations, subjects_diagnoses, alphabet = create_data_objects(df)
+    subject_documents, subject_locations, subjects_diagnoses, subject_id,alphabet = create_data_objects(df,fold_dict)
+    subject_fold = np.asarray([fold_dict[s_id] for s_id in subject_id])
+
     # Make training data array
     all_sentences = [item for sublist in subject_documents for item in sublist]
     all_locations = [item for sublist in subject_locations for item in sublist]
@@ -308,9 +319,25 @@ def create_training_data_keras(
         # return X_train, X_test, y_train, y_test, max_sentence_length, alphabet_size
 
         # train/val/test == 80/10/10
-        X_train, X_test, y_train, y_test = train_test_split(X, array(y), test_size=0.1, random_state=1)
-        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=(1 / 9), random_state=1)
-        return X_train, X_test, X_val, y_train, y_test, y_val, max_sentence_length, alphabet_size
+        #X_train, X_test, y_train, y_test = train_test_split(X, array(y), test_size=0.1, random_state=1)
+        #X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=(1 / 9), random_state=1)
+
+
+        # Fold 0 and 1 are used for early stopping during hyper opt.
+        train_mask = (subject_fold > 1)
+        val_mask = (subject_fold <= 1)
+        y = array(y)
+
+        X_train = X[train_mask]
+        X_val = X[val_mask]
+
+        y_train = y[train_mask]
+        y_val = y[val_mask]
+
+
+
+
+        return X_train, X_val, y_train, y_val, max_sentence_length, alphabet_size
     else:
         # When we plot results we just want the processed full dataset.
         return X, array(y)
