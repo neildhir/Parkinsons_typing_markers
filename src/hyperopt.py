@@ -12,6 +12,8 @@ from keras.backend.tensorflow_backend import set_session
 from keras.optimizers import Adam, Nadam  # Which optimisers to consider
 #from tensorflow.keras.optimizers import Adam
 from numpy import asarray, vstack
+from tensorflow.keras.regularizers import l2
+
 from sklearn.utils import class_weight
 import pickle
 from talos import Deploy, Predict, Restore
@@ -73,7 +75,7 @@ if args.fraction_limit:
 # --- LOAD DATA
 
 DATA_ROOT = Path("../data/") / args.which_dataset.upper() / "preproc"
-X_train, X_test, X_val, y_train, y_test, y_val, max_sentence_length, alphabet_size = create_training_data_keras(
+X_train, X_val, y_train, y_val, max_sentence_length, alphabet_size = create_training_data_keras(
     DATA_ROOT, args.which_information, args.csv_file
 )
 
@@ -100,7 +102,7 @@ optimisation_parameters = {
     "dense_units_layer_3": [128],  # [32, 64],
     "dense_units_layer_2": [64],  # [16, 32],
     "batch_size": [16, 32],
-    "epochs": [500],
+    "epochs": [5],
     "dropout": (0, 0.5, 3),
     "conv_padding": ["same"],
     "conv_kernel_initializer": ["normal"],
@@ -111,12 +113,14 @@ optimisation_parameters = {
     "loss": ["sparse_categorical_crossentropy"],  # Loss functions
     "conv_activation": ["relu"],
     "dense_activation": ["relu"],
-    "last_activation": ["sigmoid"],
+    "last_activation": ["softmax"],
     # Stationary parameters, i.e. do not get optimised
     "max_sentence_length": [max_sentence_length],
     "alphabet_size": [alphabet_size],
     "control_class_weight": [class_weights[0]],
     "pd_class_weight": [class_weights[1]],
+    "kernel_regularizer": (0.01, 0.1, 3),
+    "bias_regularizer": (0.01,0.1, 3),
 }
 
 if "time" in args.which_information:
@@ -157,11 +161,14 @@ if args.save_model == "y":
         os.makedirs(my_dir)
 
     # Query best learned model
+
+    time_and_date = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+
+    '''
     talos_model = Predict(scanner_object, task="binary")
     # Extract class-probabilities from best learned model
     true_labels_and_label_probs = np.hstack([y_test.reshape(-1, 1), talos_model.predict(X_test)])
-    time_and_date = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
     # Save array for later use
     np.savetxt(
         "../results/"
@@ -178,17 +185,18 @@ if args.save_model == "y":
         fmt="%.15f",
         delimiter=",",
     )
+    '''
 
     # Save whole model for later use
     best_model_file = args.unique_ID + "_talos_best_model_" + time_and_date
-    Deploy(scan_object=scanner_object, model_name=best_model_file, metric="val_acc")
+    Deploy(scan_object=scanner_object, model_name=best_model_file, metric="val_loss")
 
     # Deploy is stupid, hence just move the file
     os.rename(best_model_file + ".zip", my_dir + "/" + best_model_file + ".zip")
 
     # Save test (X,y)
-    pickle.dump(X_test, open(my_dir + "/" + "X_test_" + time_and_date + ".pkl", "wb"))
-    pickle.dump(np.array(y_test), open(my_dir + "/" + "y_test_" + time_and_date + ".pkl", "wb"))
+    #pickle".dump(X_test, open(my_dir + "/" + "X_test_" + time_and_date + ".pkl", "wb"))
+    #pickle.dump(np.array(y_test), open(my_dir + "/" + "y_test_" + time_and_date + ".pkl", "wb"))
 
 else:
     exit(0)
