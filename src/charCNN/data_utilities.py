@@ -65,20 +65,23 @@ class LossHistory(callbacks.Callback):
         self.accuracies.append(logs.get("acc"))
 
 
-def create_data_objects(df,fold_dict):
+def create_data_objects(df):
     """
     Note that the interpretation here is that each document is comensurate with a subject
     in the dataset.
+
     """
     subject_documents = []  # Contains on the index all sentences typed by a particular subject
     subject_locations = []  # Contains on the index all key locations used by a subject [MRC only]
     subject_diagnoses = defaultdict(dict)  # Contains on the index, the PD diagnosis of a particular subject
+    sentence_id = []
     subject_id = []
     for i in df.Participant_ID.unique():
         # Ensure that all sentences are lower-case (this improves inference further down the pipe)
         docs = df.loc[(df.Participant_ID == i)].Preprocessed_typed_sentence.tolist()
         subject_documents.append(docs)
         subject_id.extend([i] * len(docs))
+        sentence_id.extend(df.loc[(df.Participant_ID == i)].Sentence_ID.values)
 
         # This returns one diagnosis per patient
         # subject_diagnoses.append(df.loc[(df.Patient_ID == i)].Diagnosis.drop_duplicates().tolist()[0])
@@ -93,7 +96,7 @@ def create_data_objects(df,fold_dict):
     # OBS: remember that set() is random so we need to sort it before passing back
     alphabet = sorted(set("".join([item for sublist in subject_documents for item in sublist])))
 
-    return subject_documents, subject_locations, subject_diagnoses, np.asarray(subject_id), alphabet
+    return subject_documents, subject_locations, subject_diagnoses, sentence_id, np.asarray(subject_id), alphabet
 
 
 def create_training_data(DATA_ROOT, data_string, which_level="sentence"):
@@ -187,6 +190,7 @@ def create_training_data_keras(
     DATA_ROOT,
     which_information,
     csv_file,
+    test_fold_idx = None,
     feat_type=None,
     indicator_character="ω",
     mrc_unk_symbol="£",
@@ -196,6 +200,10 @@ def create_training_data_keras(
     This function creats one-hot encoded character -data for the document (=subject)
     classification model, as well as the sentence classification model. The functionality
     within is keras specific.
+
+
+
+    This method is crazy complex for no reason...
 
     Parameters
     ----------
@@ -220,14 +228,14 @@ def create_training_data_keras(
         df = read_csv(DATA_ROOT / which_information / csv_file, header=0)
 
     #read fold file
-    fold_df = read_csv(DATA_ROOT / 'subject_lvl_fold.csv')
-    fold_df_reduced = fold_df[['Patient_ID','fold']].drop_duplicates(keep='first')
-    fold_dict = {subject : fold for subject, fold in zip(fold_df_reduced.Patient_ID, fold_df_reduced.fold)}
+    fold_df = read_csv(DATA_ROOT / which_information /(csv_file.split('.')[0] +'_fold.csv'))
+    fold_df_reduced = fold_df[['Participant_ID','fold']].drop_duplicates(keep='first')
+    fold_dict = {subject : fold for subject, fold in zip(fold_df_reduced.Participant_ID, fold_df_reduced.fold)}
 
 
 
     # Get relevant data objects
-    subject_documents, subject_locations, subjects_diagnoses, subject_id,alphabet = create_data_objects(df,fold_dict)
+    subject_documents, subject_locations, subjects_diagnoses, sentence_id, subject_id,alphabet = create_data_objects(df)
     subject_fold = np.asarray([fold_dict[s_id] for s_id in subject_id])
 
     # Make training data array
@@ -242,7 +250,10 @@ def create_training_data_keras(
 
     print("\tAlphabet used:\n")
     print(alphabet_indices)
-    
+    import json
+    with open(DATA_ROOT / which_information / (csv_file.split('.')[0] + '_char2idx.json'), 'w') as fp:
+        json.dump(alphabet_indices, fp)
+
     # Initialise tokenizer which maps characters to integers
     tk = Tokenizer(num_words=None, char_level=True)
     # Fit to text: convert all chars to ints
@@ -322,22 +333,45 @@ def create_training_data_keras(
         #X_train, X_test, y_train, y_test = train_test_split(X, array(y), test_size=0.1, random_state=1)
         #X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=(1 / 9), random_state=1)
 
-
-        # Fold 0 and 1 are used for early stopping during hyper opt.
-        train_mask = (subject_fold > 1)
-        val_mask = (subject_fold <= 1)
         y = array(y)
-
-        X_train = X[train_mask]
-        X_val = X[val_mask]
-
-        y_train = y[train_mask]
-        y_val = y[val_mask]
+        if test_fold_idx is None:
+            # Fold 0 and 1 are used for early stopping during hyper opt.
+            train_mask = (subject_fold > 1)
+            val_mask = (subject_fold <= 1)
 
 
+            X_train = X[train_mask]
+            X_val = X[val_mask]
+
+            y_train = y[train_mask]
+            y_val = y[val_mask]
 
 
-        return X_train, X_val, y_train, y_val, max_sentence_length, alphabet_size
+            return X_train, X_val, y_train, y_val, max_sentence_length, alphabet_size
+        else:
+            n_folds = 10 # might need to make the number of folds modular at later stage
+            val_fold_idx = test_fold_idx + 1 if test_fold_idx + 1 < n_folds else test_fold_idx + 1 - n_folds
+
+            test_mask = subject_fold == test_fold_idx
+            val_mask = subject_fold == val_fold_idx
+            train_mask = ~test_mask & ~val_mask
+
+            X_train = X[train_mask]
+            X_val = X[val_mask]
+            X_test = X[test_mask]
+
+            y_train = y[train_mask]
+            y_val = y[val_mask]
+            y_test =y[test_mask]
+
+            sentence_id = array(sentence_id)
+            test_sentence_id = sentence_id[test_mask]
+            test_subject_id = subject_id[test_mask]
+
+            return X_train, X_val, X_test, y_train, y_val, y_test,test_subject_id,test_sentence_id, max_sentence_length, alphabet_size
+
+
+
     else:
         # When we plot results we just want the processed full dataset.
         return X, array(y)
