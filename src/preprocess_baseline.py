@@ -143,9 +143,12 @@ def calculate_iki_and_ed_baseline(
                 # Data for dataframe (note the inclusion of medication)
                 data.append((participant, sentence, diagnosis, medication, iki.mean(), iki.var(), ed))
 
-    if which_dataset == "mjff_english" or which_dataset == "mjff_spanish":
+    if which_dataset == "mjff_english":
         col_names = ["Participant_ID", "Sentence_ID", "Diagnosis", "Mean_IKI", "Var_IKI", "Edit_Distance"]
         results = remap_English_MJFF_participant_ids(pd.DataFrame(data, columns=col_names))
+    elif which_dataset == "mjff_spanish":
+        col_names = ["Participant_ID", "Sentence_ID", "Diagnosis", "Mean_IKI", "Var_IKI", "Edit_Distance"]
+        results = pd.DataFrame(data, columns=col_names)
     else:
         col_names = ["Participant_ID", "Sentence_ID", "Diagnosis", "Medication", "Mean_IKI", "Var_IKI", "Edit_Distance"]
         results = pd.DataFrame(data, columns=col_names)

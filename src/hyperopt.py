@@ -101,8 +101,8 @@ optimisation_parameters = {
     "pool_length": [2, 4],
     "dense_units_layer_3": [128],  # [32, 64],
     "dense_units_layer_2": [64],  # [16, 32],
-    "batch_size": [16, 32],
-    "epochs": [5],
+    "batch_size": [128, 256],
+    "epochs": [500],
     "dropout": (0, 0.5, 3),
     "conv_padding": ["same"],
     "conv_kernel_initializer": ["normal"],
@@ -143,6 +143,8 @@ scanner_object = ta.Scan(
     y=y_train.reshape(-1, 1),
     x_val=X_val,
     reduction_method="correlation",
+    reduction_metric="val_loss",
+    reduction_interval=50,
     y_val=y_val.reshape(-1, 1),
     round_limit=args.round_limit,  # Hard limit on the number of permutations we test
     fraction_limit=args.fraction_limit,  # Percentage of permutation space to explore
