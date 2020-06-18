@@ -180,7 +180,7 @@ def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1, drop_shi
         )
     else:
         # This option _only_ includes the characters.
-        sentence_dictionary, location_dictionary = create_char_data(
+        sentence_dictionary, location_dictionary, iki_timings_dictionary, sentence_list_dictionary = create_char_data(
             df, backspace_char=backspace_char, invokation_type=invokation_type
         )
 
@@ -1070,7 +1070,10 @@ def create_char_data(
 
     # All sentences will be stored here, indexed by their type
     character_only_sentences = defaultdict(dict)
+    character_only_sentences_list = defaultdict(dict)
     locations = defaultdict(dict)
+    numeric_iki = defaultdict(dict)
+
 
     # Loop over subjects
     for subject in subjects:
@@ -1085,12 +1088,19 @@ def create_char_data(
                 df.loc[coordinates, "key"].tolist(), removal_character=backspace_char, invokation_type=invokation_type
             )
 
+            # get timestamps for key presses, remove timestamps for deleted keys, calculate iki and store in dict
+            timings = df.loc[coordinates,'timestamp'].values
+            corrected_timings = np.delete(timings,character_indices_to_delete)
+            iki_timings = corrected_timings[1:] - corrected_timings[:-1]
+            numeric_iki[subject][sentence] = list(iki_timings)
+
             # Need to respect the lower limit on the sentence length
             if len(corrected_sentence) < char_count_response_threshold:
                 continue
 
             # Note that sentences are lower-cased here
             character_only_sentences[subject][sentence] = "".join(corrected_sentence).lower()
+            character_only_sentences_list[subject][sentence] = [c.lower() for c in corrected_sentence]
 
             if "location" in df.columns:
                 # Get the key location [only for MRC dataset]
@@ -1099,7 +1109,7 @@ def create_char_data(
                 assert len(keyboard_locs) == len(character_only_sentences[subject][sentence])
                 locations[subject][sentence] = convert(keyboard_locs)
 
-    return character_only_sentences, locations
+    return character_only_sentences, locations, numeric_iki, character_only_sentences_list
 
 
 def flatten(my_list):
@@ -1488,7 +1498,7 @@ def universal_backspace_implementer(
     return invoked_sentence, indicator_indices
 
 
-def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame) -> pd.DataFrame:
+def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame, iki_dict: dict = None, sentence_list_dict: dict = None) -> pd.DataFrame:
     """
     Function creates a pandas DataFrame which will be used by the NLP model
     downstream.
@@ -1518,13 +1528,15 @@ def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame) -
                         int(df_meta.loc[df_meta.participant_id == participant_id, "diagnosis"].unique()),
                         str(sent_id),
                         str(my_dict[participant_id][sent_id]),
+                        iki_dict[participant_id][sent_id] if iki_dict is not None else np.nan,
+                        sentence_list_dict[participant_id][sent_id] if sentence_list_dict is not None else np.nan,
                     ]
                     for sent_id in my_dict[participant_id].keys()
                 ]
             )
         )
     df = pd.concat(final_out, axis=0)
-    df.columns = ["Participant_ID", "Diagnosis", "Sentence_ID", "Preprocessed_typed_sentence"]
+    df.columns = ["Participant_ID", "Diagnosis", "Sentence_ID", "Preprocessed_typed_sentence", 'IKI_timings','PPTS_list']
 
     # Final check for empty values
     df["Preprocessed_typed_sentence"].replace("", np.nan, inplace=True)
@@ -1639,12 +1651,15 @@ def create_MJFF_dataset(
     if include_time:
         # Creates long sequences with characters repeated for IKI number of steps
         out, _ = create_char_iki_extended_data(df)
+        iki_timings = None
+        character_only_sentences_list = None
+
     else:
         # This option _only_ includes the characters.
-        out, _ = create_char_data(df, invokation_type=invokation_type)
+        out, _, iki_timings, character_only_sentences_list = create_char_data(df, invokation_type=invokation_type)
 
     # Final formatting of typing data
-    df = create_dataframe_from_processed_data(out, df_meta).reset_index(drop=True)
+    df = create_dataframe_from_processed_data(out, df_meta,iki_timings,character_only_sentences_list).reset_index(drop=True)
 
     if language == "english":
         # Remap participant identifiers so that that e.g. 10a -> 10 and 10b -> 10.
