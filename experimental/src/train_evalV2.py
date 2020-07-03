@@ -15,18 +15,25 @@ import numpy as np
 import sys
 import os
 import pandas as pd
+import json
 
-def run_experiment(data_path,fold_path,prefix,participant_norm,global_norm,sentence_norm = False):
-    res_cols = ['Participant_ID', 'Diagnosis', 'Sentence_ID', 'fold', 'PPTS_list', 'IKI_timings_original','Attempt']
+def run_experiment(data_path,fold_path,prefix,participant_norm,global_norm,sentence_norm = False, hold_time = False):
+    res_cols = ['Participant_ID', 'Diagnosis', 'Sentence_ID', 'fold', 'PPTS_list', 'IKI_timings_original','hold_time_original']#,'Attempt']
 
     save_path = Path('../results')
     print(prefix)
     if not os.path.exists(save_path / prefix):
         os.makedirs(save_path / prefix)
+        os.makedirs(save_path / prefix / 'logs')
 
 
-    wordpair_data, sentence_data, df = make_experiment_dataset(data_path, fold_path, participant_norm,
-                                                               global_norm, sentence_norm)
+    wordpair_data, sentence_data, df, char2idx = make_experiment_dataset(data_path, fold_path, participant_norm,
+                                                               global_norm, sentence_norm, hold_time)
+
+    char2idx_path = save_path / prefix / 'char2idx.json'
+    with open(char2idx_path, 'w') as json_file:
+        json.dump(char2idx, json_file)
+
 
     print(df.shape)
     #lens = df['single_char'].apply(lambda x: len(x))
@@ -147,13 +154,13 @@ def run_experiment(data_path,fold_path,prefix,participant_norm,global_norm,sente
 if __name__ == '__main__':
 
 
-    ds = 'MJFFENG'
+    ds = 'MRC'
 
     if ds == 'MJFFENG':
         ### MJFF ENGLISH PATHS ###
         root = Path(r'C:\Users\Mathias\repos\habitual_errors_NLP\data\MJFF\preproc\char_time')
 
-        data_path = root / 'EnglishData-preprocessed_attempt_1and2.csv'
+        data_path = root / 'EnglishData-preprocessed_attempt_1.csv'
         fold_path = root / 'mjff_english_5fold.csv'
         name = 'MJFFENG'
         ##########################
@@ -171,9 +178,9 @@ if __name__ == '__main__':
         ### MJFF ENGLISH PATHS ###
         root = Path(r'C:\Users\Mathias\repos\habitual_errors_NLP\data\MRC\preproc\char_time')
 
-        data_path = root / 'EnglishData-preprocessed_attempt_1.csv'
+        data_path = root / 'EnglishData-INTERPOLATED-preprocessed_attempt_1.csv'
         fold_path = root / 'mrc_5fold.csv'
-        char2idx_path = root / 'EnglishData-preprocessed_attempt_1_char2idx.json'
+        #char2idx_path = root / 'EnglishData-preprocessed_attempt_1_char2idx.json'
         name = 'MRC'
         ##########################
 
@@ -185,10 +192,11 @@ if __name__ == '__main__':
     ###PARAMS###
     participant_norm='robust'
     global_norm='robust'
-    sentence_norm = True
+    sentence_norm = False
+    hold_time = True
 
     ############
 
-    prefix = 'at2_1and2_{}_P-{}_G-{}_S-{}'.format(name,participant_norm,global_norm,int(sentence_norm))
-    run_experiment(data_path,fold_path, prefix,participant_norm,global_norm,sentence_norm)
+    prefix = 'hold_time_at1_{}_P-{}_G-{}_S-{}'.format(name,participant_norm,global_norm,int(sentence_norm))
+    run_experiment(data_path,fold_path, prefix,participant_norm,global_norm,sentence_norm, hold_time)
     print('Done')
