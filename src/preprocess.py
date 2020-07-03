@@ -135,11 +135,14 @@ def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1, drop_shi
     backspace_char = "α"
     shift_char = "β"
 
+    '''
     if not path.exists(data_root / "processed_mrc_dataset.pkl"):
         print("Couldn't find processed data. Re-running now...\n")
         df = process_mrc(pd.read_csv(data_root / "Raw_CombinedTypingData_Nov28.csv", header=0))
     else:
         df = pd.read_pickle(data_root / "processed_mrc_dataset.pkl")
+    '''
+    df = process_mrc(pd.read_csv(data_root / 'MRCData-processed-interpolated.csv'))
 
     # Select which attempt we are interested in, only English has attempts
     if attempt == 1:
@@ -151,13 +154,16 @@ def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1, drop_shi
     else:
         raise ValueError
 
+    '''
+    Dont do this anymore
+    
     # In-place dropping of keyup rows
     df.drop(df.index[(df.type == "keyup")], inplace=True)
     # Reset index so that we can sort it properly in the next step
     df.reset_index(drop=True, inplace=True)
     # Make sure that we've dropped the keyups in the MRC dataframe
     assert "keyup" not in df.type.tolist()
-
+    '''
     # Remove shift characters or not
     if drop_shift:
         # In-place dropping of these rows
@@ -169,7 +175,7 @@ def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1, drop_shi
     for i in df.participant_id.unique():
         for j in df.loc[(df.participant_id == i)].sentence_id.unique():
             coordinates = (df.participant_id == i) & (df.sentence_id == j)
-            df[coordinates].sort_values(by="timestamp", inplace=True)
+            df[coordinates].sort_values(by="keydown", inplace=True)
 
     assert all(df.groupby(["participant_id", "sentence_id"]).key.transform("count") > 40)
 
@@ -178,14 +184,20 @@ def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1, drop_shi
         sentence_dictionary, location_dictionary = create_char_iki_extended_data(
             df, backspace_char=backspace_char, invokation_type=1
         )
+        iki_timings_dictionary, sentence_list_dictionary, hold_down_dict = None, None, None
     else:
         # This option _only_ includes the characters.
-        sentence_dictionary, location_dictionary, iki_timings_dictionary, sentence_list_dictionary = create_char_data(
+        sentence_dictionary, location_dictionary, iki_timings_dictionary, sentence_list_dictionary, hold_down_dict = create_char_data(
             df, backspace_char=backspace_char, invokation_type=invokation_type
         )
 
     # Final formatting of typing data (note that df contains the diagnosis here)
-    final = create_dataframe_from_processed_data_mrc(sentence_dictionary, location_dictionary, df).reset_index(
+    final = create_dataframe_from_processed_data_mrc(sentence_dictionary,
+                                                     location_dictionary,
+                                                     iki_timings_dictionary,
+                                                     sentence_list_dictionary,
+                                                     hold_down_dict,
+                                                     df).reset_index(
         drop=True
     )
 
@@ -222,26 +234,30 @@ def process_mrc(df: pd.DataFrame, unk_symbol="£") -> pd.DataFrame:
     remove_sentences_with_arrow_keys(df)
 
     # Replace following keys with an UNK symbol (in this case "£")
+    keys2replace = [
+                    "ArrowDown",
+                    "ArrowUp",
+                    "ContextMenu",
+                    "Delete",
+                    "End",
+                    "Enter",
+                    "F11",
+                    "F16",
+                    "\n",
+                    "Home",
+                    "Insert",
+                    "MediaPreviousTrack",
+                    "None",
+                    "NumLock",
+                    "PageDown",
+                    "Process",
+                    "Unidentified",
+                  ]
+    keys2replace = keys2replace + [key.lower() for key in keys2replace]
+
+
     df.key.replace(
-        [
-            "ArrowDown",
-            "ArrowUp",
-            "ContextMenu",
-            "Delete",
-            "End",
-            "Enter",
-            "F11",
-            "F16",
-            "\n",
-            "Home",
-            "Insert",
-            "MediaPreviousTrack",
-            "None",
-            "NumLock",
-            "PageDown",
-            "Process",
-            "Unidentified",
-        ],
+        keys2replace,
         unk_symbol,  # We use a pound-sign because Americans don't have this symbol on their keyboards.
         inplace=True,
     )
@@ -261,7 +277,7 @@ def process_mrc(df: pd.DataFrame, unk_symbol="£") -> pd.DataFrame:
 
     # Return only relevant columns
     return df[
-        ["key", "type", "location", "timestamp", "participant_id", "sentence_id", "diagnosis", "medication"]
+        ["key", "location", "participant_id", "sentence_id", "diagnosis", "medication", 'keydown', 'keyup']
     ].reset_index(drop=True)
 
 
@@ -653,17 +669,17 @@ def remove_sentences_with_arrow_keys(df: pd.DataFrame):
     print("\nRemoval of sentences with left/right arrows keys...\n")
     print("Size of dataframe before row pruning: {}".format(df.shape))
     # Specify arrow movements
-    arrow_corpus = ["ArrowRight", "ArrowLeft"]
+    arrow_corpus = ["arrowright", "arrowleft"]
     # Storage
     data = []
     for arrow in arrow_corpus:
-        data.append(df.loc[df["key"] == arrow, ("key", "participant_id", "sentence_id")].values)
+        data.append(df.loc[df["key"].str.lower() == arrow, ("key", "participant_id", "sentence_id")].values)
 
     dff = pd.DataFrame.from_records(np.concatenate(data))
     dff.columns = ["key", "participant_id", "sentence_id"]
 
-    left_index = sorted(dff.loc[dff.key == "ArrowLeft", "participant_id"].unique())
-    right_index = sorted(dff.loc[dff.key == "ArrowRight", "participant_id"].unique())
+    left_index = sorted(dff.loc[dff.key == "arrowleft", "participant_id"].unique())
+    right_index = sorted(dff.loc[dff.key == "arrowright", "participant_id"].unique())
     arrowleft_matrix = pd.DataFrame(index=left_index, columns=range(1, 16))  # 15 unique sentences
     arrowright_matrix = pd.DataFrame(index=right_index, columns=range(1, 16))  # 15 unique sentences
 
@@ -671,14 +687,14 @@ def remove_sentences_with_arrow_keys(df: pd.DataFrame):
     for subj_idx in left_index:
         for sent_idx in range(1, 16):
             arrowleft_matrix.loc[subj_idx, sent_idx] = dff.loc[
-                (dff.participant_id == subj_idx) & (dff.sentence_id == sent_idx) & (dff.key == "ArrowLeft"), "key"
+                (dff.participant_id == subj_idx) & (dff.sentence_id == sent_idx) & (dff.key == "arrowleft"), "key"
             ].count()
 
     # Populate
     for subj_idx in right_index:
         for sent_idx in range(1, 16):
             arrowright_matrix.loc[subj_idx, sent_idx] = dff.loc[
-                (dff.participant_id == subj_idx) & (dff.sentence_id == sent_idx) & (dff.key == "ArrowRight"), "key"
+                (dff.participant_id == subj_idx) & (dff.sentence_id == sent_idx) & (dff.key == "arrowright"), "key"
             ].count()
 
     # Get coordinates of all rows and then drop
@@ -689,7 +705,7 @@ def remove_sentences_with_arrow_keys(df: pd.DataFrame):
     print("Size of dataframe after row pruning: {}".format(df.shape))
 
     # Replace "Spacebar" with a blank space for homegeneity
-    df.key.replace("Spacebar", " ", inplace=True)
+    df.key.replace("spacebar", " ", inplace=True)
 
 
 def remove_typed_sentences_with_high_edit_distance(df: pd.DataFrame, edit_distances_df=None, threshold=75):
@@ -1058,7 +1074,14 @@ def create_char_data(
         Dictionary indexed by subjects, containing all sentences per subject
     """
 
-    assert set(["participant_id", "key", "timestamp", "sentence_id"]).issubset(df.columns)
+    if set(["participant_id", "key", "timestamp", "sentence_id"]).issubset(df.columns):
+        mode = 'MJFF_MODE'
+    elif set(["participant_id", "key", "keyup","keydown", "sentence_id"]).issubset(df.columns):
+        mode = 'MRC_MODE'
+        # MRC keydown is equivalent to MJFF keydown
+        df['timestamp']=df.keydown
+
+    print('Using mode: {}'.format(mode))
 
     # Filter out responses where the number of characters per typed
     # response, is below a threshold value (40 by default)
@@ -1073,6 +1096,7 @@ def create_char_data(
     character_only_sentences_list = defaultdict(dict)
     locations = defaultdict(dict)
     numeric_iki = defaultdict(dict)
+    hold_down_time = defaultdict(dict)
 
 
     # Loop over subjects
@@ -1106,8 +1130,20 @@ def create_char_data(
                 # Get the key location [only for MRC dataset]
                 keyboard_locs = df.loc[coordinates, "location"].values
                 keyboard_locs = np.delete(keyboard_locs, character_indices_to_delete)
+
                 assert len(keyboard_locs) == len(character_only_sentences[subject][sentence])
                 locations[subject][sentence] = convert(keyboard_locs)
+
+            if mode == 'MRC_MODE':
+                keypress_timings = df.loc[coordinates,'keyup'].values - df.loc[coordinates, 'keydown'].values
+
+                keypress_timings = np.delete(keypress_timings, character_indices_to_delete)
+                assert len(keypress_timings) == len(character_only_sentences[subject][sentence])
+                hold_down_time[subject][sentence] = list(keypress_timings)
+
+    if mode == 'MRC_MODE':
+        return character_only_sentences, locations, numeric_iki, character_only_sentences_list, hold_down_time
+
 
     return character_only_sentences, locations, numeric_iki, character_only_sentences_list
 
@@ -1548,7 +1584,9 @@ def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame, i
     return df
 
 
-def create_dataframe_from_processed_data_mrc(my_dict: dict, location_dict: dict, df_meta: pd.DataFrame) -> pd.DataFrame:
+def create_dataframe_from_processed_data_mrc(my_dict: dict, location_dict: dict, iki_dict: dict,
+                                             sentence_list_dict: dict, hold_down_dict: dict,
+                                             df_meta: pd.DataFrame) -> pd.DataFrame:
     """
     Function creates a pandas DataFrame which will be used by the NLP model
     downstream.
@@ -1579,13 +1617,17 @@ def create_dataframe_from_processed_data_mrc(my_dict: dict, location_dict: dict,
                         str(sent_id),
                         str(my_dict[participant_id][sent_id]),
                         location_dict[participant_id][sent_id],
+                        iki_dict[participant_id][sent_id] if iki_dict is not None else np.nan,
+                        sentence_list_dict[participant_id][sent_id] if sentence_list_dict is not None else np.nan,
+                        hold_down_dict[participant_id][sent_id] if hold_down_dict is not None else np.nan,
                     ]
                     for sent_id in my_dict[participant_id].keys()
                 ]
             )
         )
     df = pd.concat(final_out, axis=0)
-    df.columns = ["Participant_ID", "Diagnosis", "Sentence_ID", "Preprocessed_typed_sentence", "Preprocessed_locations"]
+    df.columns = ["Participant_ID", "Diagnosis", "Sentence_ID", "Preprocessed_typed_sentence",
+                  'locations', 'IKI_timings','PPTS_list', 'hold_time']
 
     # Final check for empty values
     df["Preprocessed_typed_sentence"].replace("", np.nan, inplace=True)
