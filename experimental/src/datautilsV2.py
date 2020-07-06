@@ -6,17 +6,21 @@ from pathlib import Path
 import json
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from collections import Counter
+from gensim.models import KeyedVectors
 
 
-def split_sentence_in_word_pairs(x, label, fold, char2idx):
+def split_sentence_in_word_pairs(x, label, fold, char2idx,space_locations = None):
     '''
     Helper that divides preprocessed sentence matrix in to word_pair matrices for
     pretraining CNN filters
     '''
 
-    space_locations = np.where(x[:, char2idx[' ']])[0]
+    if space_locations is None:
+        space_locations = np.where(x[:, char2idx[' ']])[0]
+
+
     if space_locations[0] != 0:
-        space_locations = np.insert(space_locations, 0, 0)
+        space_locations = np.insert(np.array(space_locations), 0, 0)
 
     word_pair_seq = []
     for i in range(len(space_locations) - 2):
@@ -26,6 +30,18 @@ def split_sentence_in_word_pairs(x, label, fold, char2idx):
     fld = [fold] * len(word_pair_seq)
     return word_pair_seq, y, fld
 
+
+def mk_char2vec_wordpair_data(X,Y,folds,space_locations):
+    word_pairs, labels, fold_array = [], [], []
+    i=0
+    for x, y, fold, sl in zip(X, Y, folds, space_locations):
+        wp, lbl, fld = split_sentence_in_word_pairs(x, y, fold, char2idx=None, space_locations = sl)
+        word_pairs.extend(wp)
+        labels.extend(lbl)
+        fold_array.extend(fld)
+        i+=1
+
+    return np.array(word_pairs), np.array(labels), np.array(fold_array)
 
 def mk_wordpair_data(X, Y, folds, char2idx):
     word_pairs, labels, fold_array = [], [], []
@@ -107,6 +123,46 @@ def sentence_normalise(df, how='divmean'):
 
 
 
+def mk_char2vec_dataset(df: pd.DataFrame, hold_time: bool):
+    char2vec = KeyedVectors.load('cbow.wv')
+    extra_channels = 1
+    if hold_time:
+        extra_channels += 1
+    cv_size = len(char2vec['a'])
+    channels = cv_size + extra_channels
+    X = []
+    y = df.Diagnosis.values
+    space_locations = []
+    for idx, row in df.iterrows():
+
+        PPTS_list = row.PPTS_list
+        IKI_timings = row.IKI_timings
+        x = np.zeros((len(PPTS_list), channels))
+        space_loc = []
+        for i, char in enumerate(PPTS_list):
+            if char == ' ':
+                space_loc.append(i)
+
+            try:
+                x[i, :cv_size] = char2vec[char]
+            except KeyError:
+                if char == 'ω':
+                    print('Could not find {} in vocabulary, filling with ones'.format(char))
+                    x[i, :cv_size] = np.ones(cv_size)
+                else:
+                    print('Could not find {} in vocabulary, filling with zeros'.format(char))
+                    x[i, :cv_size] = np.zeros(cv_size)
+        x[1:, -1] = IKI_timings
+
+        if hold_time:
+            x[:,-2] = row.hold_time
+
+
+        X.append(x)
+        space_locations.append(space_loc)
+    return np.asarray(X), y, space_locations
+
+
 
 def mk_standard_dataset(df: pd.DataFrame, char2idx: dict, hold_time: bool):
     extra_channels = 1
@@ -121,7 +177,11 @@ def mk_standard_dataset(df: pd.DataFrame, char2idx: dict, hold_time: bool):
         IKI_timings = row.IKI_timings
         x = np.zeros((len(PPTS_list), channels))
         for i, char in enumerate(PPTS_list):
-            x[i, char2idx[char]] = 1
+            try:
+                x[i, char2idx[char]] = 1
+            except KeyError:
+                print('Could not find {} in vocabulary, filling with unkchar = £'.format(char))
+                x[i, char2idx["£"]] = 1
         x[1:, -1] = IKI_timings
 
         if hold_time:
@@ -180,7 +240,7 @@ def extract_folds(X_dict, y_dict, test_fold):
     return x_train, x_test, y_train, y_test
 
 
-def make_experiment_dataset(data_path, fold_path, participant_norm, global_norm,sentence_norm = False, hold_time = True):
+def make_experiment_dataset(data_path, fold_path, participant_norm, global_norm,sentence_norm = False, hold_time = False, char2vec = False):
     # read from file
     df = pd.read_csv(data_path)
     print(df.head())
@@ -217,9 +277,15 @@ def make_experiment_dataset(data_path, fold_path, participant_norm, global_norm,
 
 
     # make sentence dataset for training
-    X_sentence, y_sentence = mk_standard_dataset(df, char2idx, hold_time)
 
-    X_wordpair, y_wordpair, fold_wordpair = mk_wordpair_data(X_sentence,y_sentence,df.fold.values,char2idx)
+    if char2vec:
+        X_sentence, y_sentence, space_locations = mk_char2vec_dataset(df,hold_time)
+        X_wordpair, y_wordpair, fold_wordpair = mk_char2vec_wordpair_data(X_sentence, y_sentence, df.fold.values, space_locations)
+
+    else:
+        X_sentence, y_sentence = mk_standard_dataset(df, char2idx, hold_time)
+        X_wordpair, y_wordpair, fold_wordpair = mk_wordpair_data(X_sentence,y_sentence,df.fold.values,char2idx)
+
 
 
     # print('WARNING MAXLEN 700')
