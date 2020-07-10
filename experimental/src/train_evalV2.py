@@ -19,9 +19,9 @@ import json
 
 
 def run_experiment(data_path, fold_path, prefix, participant_norm, global_norm, sentence_norm=False, hold_time=False,
-                   char2vec=False):
+                   feature_type='standard'):
     res_cols = ['Participant_ID', 'Diagnosis', 'Sentence_ID', 'fold', 'PPTS_list',
-                'IKI_timings_original']  # ,'Attempt']
+                'IKI_timings_original']#, 'Attempt']
     if hold_time:
         res_cols = res_cols + ['hold_time_original']
 
@@ -34,7 +34,7 @@ def run_experiment(data_path, fold_path, prefix, participant_norm, global_norm, 
 
 
     wordpair_data, sentence_data, df, char2idx = make_experiment_dataset(data_path, fold_path, participant_norm,
-                                                                         global_norm, sentence_norm, hold_time, char2vec = char2vec)
+                                                                         global_norm, sentence_norm, hold_time, feature_type = feature_type)
 
     char2idx_path = save_path / prefix / 'char2idx.json'
     with open(char2idx_path, 'w') as json_file:
@@ -156,13 +156,13 @@ def run_experiment(data_path, fold_path, prefix, participant_norm, global_norm, 
 
 if __name__ == '__main__':
 
-    ds = 'MRC'
+    ds = 'MJFFSPAN'
 
     if ds == 'MJFFENG':
         ### MJFF ENGLISH PATHS ###
         root = Path(r'C:\Users\Mathias\repos\habitual_errors_NLP\data\MJFF\preproc\char_time')
 
-        data_path = root / 'EnglishData-preprocessed_attempt_1.csv'
+        data_path = root / 'EnglishData-preprocessed_attempt_1and2.csv'
         fold_path = root / 'mjff_english_5fold.csv'
         name = 'MJFFENG'
         ##########################
@@ -191,10 +191,12 @@ if __name__ == '__main__':
     global_norm = 'robust'
     sentence_norm = False
     hold_time = False
-    char2vec = True
+    features = 'standard'
+
+    assert features in ['standard', 'char2vec', 'timeonly']
 
     ############
 
-    prefix = 'CHAR2VEC3_{}_P-{}_G-{}_S-{}'.format(name, participant_norm, global_norm, int(sentence_norm))
-    run_experiment(data_path, fold_path, prefix, participant_norm, global_norm, sentence_norm, hold_time = hold_time, char2vec = char2vec)
+    prefix = 'FINALE_{}_P-{}_G-{}_S-{}_{}'.format(name, participant_norm, global_norm, int(sentence_norm),features)
+    run_experiment(data_path, fold_path, prefix, participant_norm, global_norm, sentence_norm, hold_time = hold_time, feature_type = features)
     print('Done')

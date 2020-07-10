@@ -27,20 +27,31 @@ mpl.rcParams.update(nice_fonts)
 
 
 
+def weighted_avg_and_std(values, weights):
+    """
+    Return the weighted average and standard deviation.
+
+    values, weights -- Numpy ndarrays with the same shape.
+    """
+    average = np.average(values, weights=weights)
+    # Fast and numerically precise:
+    variance = np.average((values-average)**2, weights=weights)
+    return (average, np.sqrt(variance))
 
 
 
 
+def make_plot_folder(data_root: Path, attempt):
+    for a in attempt:
 
-def make_plot_folder(data_root: Path):
-    plot_folder = data_root / 'figures'
-    sentence_lvl_folder = plot_folder / 'sentence_lvl'
-    participant_lvl_folder = plot_folder / 'participant_lvl'
+        plot_folder = data_root / 'figures_attempt{}'.format(a)
+        sentence_lvl_folder = plot_folder / 'sentence_lvl'
+        participant_lvl_folder = plot_folder / 'participant_lvl'
 
-    if not os.path.exists(plot_folder):
-        os.makedirs(plot_folder)
-        os.makedirs(sentence_lvl_folder)
-        os.makedirs(participant_lvl_folder)
+        if not os.path.exists(plot_folder):
+            os.makedirs(plot_folder)
+            os.makedirs(sentence_lvl_folder)
+            os.makedirs(participant_lvl_folder)
 
 
 
@@ -80,7 +91,7 @@ def transform2participant_lvl(network_df: pd.DataFrame):
     table.columns = table.columns.droplevel()
     table = table.merge(diag_fold, on='Participant_ID')
     table = table.merge(bl_predictors, on='Participant_ID')
-    table.fillna(-1, inplace = True)
+    table.fillna(table.mean(), inplace = True)
 
     return table
 
@@ -89,7 +100,7 @@ def transform2participant_lvl(network_df: pd.DataFrame):
 
 
 
-def sentence_lvl_network_plot(data_root: Path):
+def sentence_lvl_network_plot(data_root: Path, folder_name: str, attempt: int = 0):
     # Figure parameters
     lw = 3
     plt.figure(figsize=(5, 5))
@@ -101,13 +112,15 @@ def sentence_lvl_network_plot(data_root: Path):
     AUC = []
     interp_tpr = []
     x = np.linspace(0, 1, 100)
-
+    num_samp = []
     for pth in data_root.glob('fold*'):
         df = pd.read_csv(pth)
-        # df = df[df.Attempt == 1]
+        if 'Attempt' in df.columns:
+            df = df[df.Attempt == attempt]
 
         y = df['Diagnosis'].values
         pred = df['rough'].values
+        num_samp.append(len(pred))
 
         fpr, tpr, _ = roc_curve(y, pred)
         roc_auc = auc(fpr, tpr)
@@ -120,21 +133,22 @@ def sentence_lvl_network_plot(data_root: Path):
     mean = np.mean(interp_tpr, axis=0)
     std = np.std(interp_tpr, axis=0)
 
+    weights = np.array(num_samp)/np.sum(num_samp)
+    weighted_avg_AUC, weighted_std_AUC = weighted_avg_and_std(AUC,weights)
     plt.plot(x, mean, color='darkorange', lw=lw,
-             label='AUC: {:.2f} ({:.2f}), best: {:.2}'.format(np.mean(AUC), np.std(AUC), np.max(AUC)))
+             label='AUC: {:.2f} ({:.2f}), best: {:.2}'.format(weighted_avg_AUC, weighted_std_AUC, np.max(AUC)))
     plt.fill_between(x, mean + std, mean - std, alpha=0.2, color='darkorange')
-    plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+    plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--', label = 'Chance')
 
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
 
     plt.legend(loc="lower right")
 
-    save_as = data_root / 'figures' / 'sentence_lvl' /'network_ROC.pdf'
+    save_as = data_root / folder_name / 'sentence_lvl' /'network_ROC.pdf'
     plt.savefig(save_as)
-    plt.close()
 
-def sentence_lvl_baseline_plot(data_root: Path,df: pd.DataFrame):
+def sentence_lvl_baseline_plot(data_root: Path,df: pd.DataFrame, folder_name: str):
     network_features = ['tuned']
     IKI_features = ['Mean_IKI', 'Var_IKI']
     ED_features = ['Edit_Distance']
@@ -155,9 +169,10 @@ def sentence_lvl_baseline_plot(data_root: Path,df: pd.DataFrame):
         interp_tpr = []
         AUC = []
         x = np.linspace(0, 1, 100)
+        num_samp = []
         for fold in df.fold.unique():
             x_train, x_test, y_train, y_test = make_fold_data(fold, exp_features, df)
-
+            num_samp.append(len(y_test))
 
 
             clf = RFC(n_estimators=300)
@@ -174,30 +189,35 @@ def sentence_lvl_baseline_plot(data_root: Path,df: pd.DataFrame):
 
         mean = np.mean(interp_tpr, axis=0)
         std = np.std(interp_tpr, axis=0)
+
+        weights = np.array(num_samp) / np.sum(num_samp)
+        weighted_avg_AUC, weighted_std_AUC = weighted_avg_and_std(AUC, weights)
+
+
         plt.plot(x, mean, color='darkorange', lw=lw,
-                 label='AUC: {:.2f} ({:.2f}), best: {:.2}'.format(np.mean(AUC), np.std(AUC), np.max(AUC)))
+                 label='AUC: {:.2f} ({:.2f}), best: {:.2}'.format(weighted_avg_AUC, weighted_std_AUC, np.max(AUC)))
         plt.fill_between(x, mean + std, mean - std, alpha=0.2, color='darkorange')
-        plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+        plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--', label = 'Chance')
         plt.xlim([0.0, 1.0])
         plt.ylim([0.0, 1.05])
         plt.xlabel('False Positive Rate')
         plt.ylabel('True Positive Rate')
         plt.legend(loc = 'lower right')
-        save_to = data_root / 'figures' / 'sentence_lvl' /(exp_name + '_ROC.pdf')
+        save_to = data_root / folder_name / 'sentence_lvl' /(exp_name + '_ROC.pdf')
         plt.savefig(save_to)
 
 
     return 0
 
 
-def sentence_lvl_plots(data_root: Path,df):
-
-    sentence_lvl_network_plot(data_root)
-    sentence_lvl_baseline_plot(data_root,df)
-
+def sentence_lvl_plots(data_root: Path,df: pd.DataFrame, attempt):
+    folder_name = 'figures_attempt{}'.format(attempt)
+    sentence_lvl_network_plot(data_root, folder_name, attempt=attempt)
+    sentence_lvl_baseline_plot(data_root,df, folder_name)
+    plt.close()
     return 0
 
-def participant_lvl_plots(data_root: Path,participant_table: pd.DataFrame, network_features: list):
+def participant_lvl_plots(data_root: Path,participant_table: pd.DataFrame, network_features: list, folder_name: str):
     mean_p_features = ['p_mean']
     IKI_features = ['IKI_mean', 'IKI_std']
     ED_features = ['ED_mean', 'ED_std']
@@ -223,10 +243,10 @@ def participant_lvl_plots(data_root: Path,participant_table: pd.DataFrame, netwo
         AUC = []
         x = np.linspace(0, 1, 100)
 
-
+        num_samp = []
         for fold in range(0,5):
             x_train, x_test, y_train, y_test = make_fold_data(fold,exp_features,participant_table)
-
+            num_samp.append(len(y_test))
             if exp_name == 'mean_p':
                 pred = x_test
             else:
@@ -243,17 +263,22 @@ def participant_lvl_plots(data_root: Path,participant_table: pd.DataFrame, netwo
 
         mean = np.mean(interp_tpr, axis=0)
         std = np.std(interp_tpr, axis=0)
+
+        weights = np.array(num_samp) / np.sum(num_samp)
+        weighted_avg_AUC, weighted_std_AUC = weighted_avg_and_std(AUC, weights)
+
         plt.plot(x, mean, color='darkorange', lw=lw,
-                 label='AUC: {:.2f} ({:.2f}), best: {:.2}'.format(np.mean(AUC), np.std(AUC), np.max(AUC)))
+                 label='AUC: {:.2f} ({:.2f}), best: {:.2}'.format(weighted_avg_AUC, weighted_std_AUC, np.max(AUC)))
         plt.fill_between(x, mean + std, mean - std, alpha=0.2, color='darkorange')
-        plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+        plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--', label = 'Chance')
         plt.xlim([0.0, 1.0])
         plt.ylim([0.0, 1.05])
         plt.xlabel('False Positive Rate')
         plt.ylabel('True Positive Rate')
         plt.legend(loc='lower right')
-        save_to = data_root / 'figures' / 'participant_lvl' / (exp_name + '_ROC.pdf')
+        save_to = data_root / folder_name / 'participant_lvl' / (exp_name + '_ROC.pdf')
         plt.savefig(save_to)
+        plt.close()
 
 
 
@@ -263,7 +288,7 @@ def participant_lvl_plots(data_root: Path,participant_table: pd.DataFrame, netwo
 
 def main(data_root: str):
     data_root = Path(data_root)
-    make_plot_folder(data_root)
+
 
     dfs = []
     for pth in data_root.glob('fold_*.csv'):
@@ -273,24 +298,45 @@ def main(data_root: str):
     network_df['IKI_timings_original'] = network_df.IKI_timings_original.apply(lambda x: eval(x))
     network_features = sorted(network_df.Sentence_ID.unique())
 
+    if 'Attempt' in network_df.columns:
+        attempt = network_df.Attempt.unique()
+    else:
+        attempt = [1]
+    make_plot_folder(data_root, attempt)
+
+
+
     if 'MJFFENG' in data_root.stem:
-        baseline_path = Path('../results/MJFFENG_baselines_raw.csv')
+        baseline_path = Path('../results/')
     elif 'MJFFSPAN' in data_root.stem:
         baseline_path = Path('../results/MJFFSPAN_baselines_raw.csv')
     elif 'MRC' in data_root.stem:
         baseline_path = Path('../../data/MRC/processed_MRC_all_mean_IKI_and_ED.csv')
 
-    baseline_df = pd.read_csv(baseline_path)
-
-    df = pd.merge(network_df, baseline_df, on=['Participant_ID', 'Sentence_ID', 'Diagnosis'], how='inner', )
 
 
-    sentence_lvl_plots(data_root,df)
+    if 'Attempt' in network_df.columns:
+        for attempt in network_df.Attempt.unique():
+            sub_df = network_df[network_df.Attempt == attempt]
+
+            baseline_df = pd.read_csv(baseline_path / 'MJFFENG_baselines_attempt_{}.csv'.format(attempt))
+
+            sub_df = pd.merge(sub_df, baseline_df, on=['Participant_ID', 'Sentence_ID', 'Diagnosis'], how='inner', )
+            print(sub_df.Attempt.unique())
+            sentence_lvl_plots(data_root,sub_df, attempt)
+
+            participant_table = transform2participant_lvl(sub_df)
+            participant_lvl_plots(data_root, participant_table, network_features,'figures_attempt{}'.format(attempt))
+    else:
+        baseline_df = pd.read_csv(baseline_path)
+        df = pd.merge(network_df, baseline_df, on=['Participant_ID', 'Sentence_ID', 'Diagnosis'], how='inner', )
+        sentence_lvl_plots(data_root,df,1)
+        participant_table = transform2participant_lvl(df)
+        participant_lvl_plots(data_root, participant_table, network_features,'figures_attempt1')
 
 
 
-    participant_table = transform2participant_lvl(df)
-    participant_lvl_plots(data_root,participant_table,network_features)
+
 
 
 

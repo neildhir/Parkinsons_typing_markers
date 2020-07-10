@@ -124,7 +124,7 @@ def sentence_normalise(df, how='divmean'):
 
 
 def mk_char2vec_dataset(df: pd.DataFrame, hold_time: bool):
-    char2vec = KeyedVectors.load('cbow.wv')
+    char2vec = KeyedVectors.load('cbow10_w3.wv')
     extra_channels = 1
     if hold_time:
         extra_channels += 1
@@ -192,6 +192,31 @@ def mk_standard_dataset(df: pd.DataFrame, char2idx: dict, hold_time: bool):
     return np.asarray(X), y
 
 
+def mk_timeonly_dataset(df: pd.DataFrame, hold_time: bool):
+    channels = 1
+    if hold_time:
+        channels += 1
+
+    X = []
+    space_locations = []
+    y = df.Diagnosis.values
+    for idx, row in df.iterrows():
+        PPTS_list = np.array(row.PPTS_list)
+        IKI_timings = row.IKI_timings
+        x = np.zeros((len(PPTS_list), channels))
+
+        x[1:, -1] = IKI_timings
+
+        if hold_time:
+            x[:,-2] = row.hold_time
+        space_locations.append(np.where(PPTS_list == ' ')[0])
+        X.append(x)
+    return np.asarray(X), y, space_locations
+
+
+
+
+
 def adjust_range(df, how='minmax'):
     how_allowed = ['minmax', 'robust']
     assert how in how_allowed, '{} not in allowed values: {}'.format(how, how_allowed)
@@ -240,7 +265,7 @@ def extract_folds(X_dict, y_dict, test_fold):
     return x_train, x_test, y_train, y_test
 
 
-def make_experiment_dataset(data_path, fold_path, participant_norm, global_norm,sentence_norm = False, hold_time = False, char2vec = False):
+def make_experiment_dataset(data_path, fold_path, participant_norm, global_norm,sentence_norm = False, hold_time = False, feature_type = 'standard'):
     # read from file
     df = pd.read_csv(data_path)
     print(df.head())
@@ -278,13 +303,17 @@ def make_experiment_dataset(data_path, fold_path, participant_norm, global_norm,
 
     # make sentence dataset for training
 
-    if char2vec:
+    if feature_type == 'char2vec':
         X_sentence, y_sentence, space_locations = mk_char2vec_dataset(df,hold_time)
         X_wordpair, y_wordpair, fold_wordpair = mk_char2vec_wordpair_data(X_sentence, y_sentence, df.fold.values, space_locations)
 
-    else:
+    elif feature_type == 'standard':
         X_sentence, y_sentence = mk_standard_dataset(df, char2idx, hold_time)
         X_wordpair, y_wordpair, fold_wordpair = mk_wordpair_data(X_sentence,y_sentence,df.fold.values,char2idx)
+    elif feature_type == 'timeonly':
+        X_sentence, y_sentence, space_locations = mk_timeonly_dataset(df,hold_time)
+        X_wordpair, y_wordpair, fold_wordpair = mk_char2vec_wordpair_data(X_sentence, y_sentence, df.fold.values,
+                                                                          space_locations)
 
 
 
