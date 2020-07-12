@@ -191,7 +191,7 @@ if __name__ == '__main__':
     global_norm = 'robust'
     sentence_norm = False
     hold_time = False
-    features = 'standard'
+    features = 'timeonly'
 
     assert features in ['standard', 'char2vec', 'timeonly']
 
