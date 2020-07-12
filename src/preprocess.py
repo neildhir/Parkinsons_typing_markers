@@ -55,19 +55,7 @@ def remove_superfluous_reponse_id_rows(df: pd.DataFrame) -> pd.DataFrame:
 
 
 class preprocessMRC:
-    """
-    Governing class with which the user will interface.
-    All the heavy lifting happens under the hood.
-
-    1. Cleaning takes place
-    2. Preprocessing takes place
-    """
-
     def __init__(self):
-        print("\tMedical Research Council funded PD copy-typing data.\n")
-        warnings.warn("This is a temporary processing class. The final is still under construction as of [02/12/2019].")
-
-    def __call__(self, which_attempt=1, include_time=False) -> pd.DataFrame:
         """
         This class is somewhat different to the MJFF loading class. See options below.
 
@@ -85,37 +73,16 @@ class preprocessMRC:
         pd.DataFrame
             Dataframe which headers: subject_id, sentence_id, medication, processed_typed_sentence
         """
-        df = create_MRC_dataset(include_time=include_time, attempt=which_attempt)
+        print("\tMedical Research Council funded PD copy-typing data.\n")
+
+    def __call__(self, which_attempt=1) -> pd.DataFrame:
+        df = create_MRC_dataset(attempt=which_attempt)
         # Print summary stats of what we have loaded.
         dataset_summary_statistics(df)
         return df
 
-    # # TODO: need to invoke the long_format keyword at some point
-    # def __call__(self, long_format=True) -> pd.DataFrame:
 
-    #     # Location on Neil's big machine in Sweden
-    #     data_root = Path("../data/MRC/")
-
-    #     # Read data [ensure that this is the newest version available]
-    #     raw = pd.read_csv(data_root / "CombinedTypingDataNov21-duplicateeventsremoved.csv", header=0)
-
-    #     # Clean
-    #     df = process_mrc(raw)
-
-    #     # Preprocess: create sentences to be used in NLP model
-    #     # TODO: this function does currently [22/11/2019] not work, use the IKI version instead
-    #     sentences, _ = make_char_compression_sentences_from_raw_typing_mrc(df)
-
-    #     # Convert into NLP-readable format
-    #     df = create_dataframe_from_processed_mjff_data(sentences, raw)
-
-    #     # Print summary stats of what we have loaded.
-    #     dataset_summary_statistics(df)
-
-    #     return df
-
-
-def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1, drop_shift=True) -> pd.DataFrame:
+def create_MRC_dataset(include_time=False, attempt=1, invokation_type=1, drop_shift=True) -> pd.DataFrame:
     """
     End-to-end creation of raw data to NLP readable train and test sets.
 
@@ -134,15 +101,7 @@ def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1, drop_shi
     data_root = Path("../data/MRC/")  # My local path
     backspace_char = "α"
     shift_char = "β"
-
-    '''
-    if not path.exists(data_root / "processed_mrc_dataset.pkl"):
-        print("Couldn't find processed data. Re-running now...\n")
-        df = process_mrc(pd.read_csv(data_root / "Raw_CombinedTypingData_Nov28.csv", header=0))
-    else:
-        df = pd.read_pickle(data_root / "processed_mrc_dataset.pkl")
-    '''
-    df = process_mrc(pd.read_csv(data_root / 'MRCData-processed-interpolated.csv'))
+    df = process_mrc(pd.read_csv(data_root / "MRCData-processed-interpolated.csv"))
 
     # Select which attempt we are interested in, only English has attempts
     if attempt == 1:
@@ -154,16 +113,6 @@ def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1, drop_shi
     else:
         raise ValueError
 
-    '''
-    Dont do this anymore
-    
-    # In-place dropping of keyup rows
-    df.drop(df.index[(df.type == "keyup")], inplace=True)
-    # Reset index so that we can sort it properly in the next step
-    df.reset_index(drop=True, inplace=True)
-    # Make sure that we've dropped the keyups in the MRC dataframe
-    assert "keyup" not in df.type.tolist()
-    '''
     # Remove shift characters or not
     if drop_shift:
         # In-place dropping of these rows
@@ -180,26 +129,35 @@ def create_MRC_dataset(include_time=True, attempt=1, invokation_type=1, drop_shi
     assert all(df.groupby(["participant_id", "sentence_id"]).key.transform("count") > 40)
 
     if include_time:
+        #  FYI: this option is not used anymore
+
         # Creates long sequences with characters repeated for IKI number of steps
         sentence_dictionary, location_dictionary = create_char_iki_extended_data(
             df, backspace_char=backspace_char, invokation_type=1
         )
         iki_timings_dictionary, sentence_list_dictionary, hold_down_dict = None, None, None
+
     else:
         # This option _only_ includes the characters.
-        sentence_dictionary, location_dictionary, iki_timings_dictionary, sentence_list_dictionary, hold_down_dict = create_char_data(
-            df, backspace_char=backspace_char, invokation_type=invokation_type
-        )
+        (
+            sentence_dictionary,
+            location_dictionary,
+            iki_timings_dictionary,
+            sentence_list_dictionary,
+            hold_down_dict,
+            pause_dict,
+        ) = create_char_data(df, backspace_char=backspace_char, invokation_type=invokation_type)
 
     # Final formatting of typing data (note that df contains the diagnosis here)
-    final = create_dataframe_from_processed_data_mrc(sentence_dictionary,
-                                                     location_dictionary,
-                                                     iki_timings_dictionary,
-                                                     sentence_list_dictionary,
-                                                     hold_down_dict,
-                                                     df).reset_index(
-        drop=True
-    )
+    final = create_dataframe_from_processed_data_mrc(
+        sentence_dictionary,
+        location_dictionary,
+        iki_timings_dictionary,
+        sentence_list_dictionary,
+        hold_down_dict,
+        pause_dict,
+        df,
+    ).reset_index(drop=True)
 
     # Return the empirical data and the reference sentences for downstream tasks
     return final
@@ -235,26 +193,25 @@ def process_mrc(df: pd.DataFrame, unk_symbol="£") -> pd.DataFrame:
 
     # Replace following keys with an UNK symbol (in this case "£")
     keys2replace = [
-                    "ArrowDown",
-                    "ArrowUp",
-                    "ContextMenu",
-                    "Delete",
-                    "End",
-                    "Enter",
-                    "F11",
-                    "F16",
-                    "\n",
-                    "Home",
-                    "Insert",
-                    "MediaPreviousTrack",
-                    "None",
-                    "NumLock",
-                    "PageDown",
-                    "Process",
-                    "Unidentified",
-                  ]
+        "ArrowDown",
+        "ArrowUp",
+        "ContextMenu",
+        "Delete",
+        "End",
+        "Enter",
+        "F11",
+        "F16",
+        "\n",
+        "Home",
+        "Insert",
+        "MediaPreviousTrack",
+        "None",
+        "NumLock",
+        "PageDown",
+        "Process",
+        "Unidentified",
+    ]
     keys2replace = keys2replace + [key.lower() for key in keys2replace]
-
 
     df.key.replace(
         keys2replace,
@@ -277,7 +234,7 @@ def process_mrc(df: pd.DataFrame, unk_symbol="£") -> pd.DataFrame:
 
     # Return only relevant columns
     return df[
-        ["key", "location", "participant_id", "sentence_id", "diagnosis", "medication", 'keydown', 'keyup']
+        ["key", "location", "participant_id", "sentence_id", "diagnosis", "medication", "keydown", "keyup"]
     ].reset_index(drop=True)
 
 
@@ -837,6 +794,126 @@ def dataset_summary_statistics(df: pd.DataFrame):
     print("Maximum sentence length: %d" % sentence_lengths.max())
 
 
+def typing_dynamics_editor(
+    df: pd.DataFrame,
+    what_to_correct="hold_time",
+    char_count_response_threshold: int = 40,
+    cut_off_percentile: int = 99,
+    correction_model: str = "gengamma",
+) -> Tuple[dict, dict]:
+    """
+    Function is used to correct the typing dynamics, to attend to anomalies like subjects stopping mid-typing
+    to attend to other matters, thus causing faulty temporal dynamics.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataframe which contains the raw typed sentences (MJFF or MRC dataset)
+    char_count_response_threshold : int, optional
+        The minimum number of characters required for an entry to be considered a valid attempt
+    cut_off_percentile : float, optional
+        IKI values above this threshold are replace by the first moment of correction_model, by default 99
+    correction_model : str, optional
+        Generative model used to do adjusments, by default "gengamma"
+
+    Returns
+    -------
+    Tuple[dict, list]
+        Dictionary of sentences indexed by subject
+    """
+
+    assert what_to_correct in ["pause", "iki", "hold_time"]
+    assert set(["participant_id", "key", "timestamp", "sentence_id", "keydown", "keyup"]).issubset(df.columns)
+    # Filter out responses where the number of characters per typed
+    # response, is below a threshold value (40 by default)
+    df = df.groupby("sentence_id").filter(lambda x: x["sentence_id"].count() > char_count_response_threshold)
+    assert not df.empty
+
+    # Sentence identifiers
+    sentences = sorted(set(df.sentence_id))  # NOTE: set() is weakly random
+
+    # Store corrected sentences here
+    corrected = defaultdict(dict)
+
+    # Dynamics modelling
+    dynamics_funcs = {"gengamma": gengamma.fit, "lognorm": lognorm.fit, "gamma": gamma.fit}
+    dynamics_funcs_cut_off_quantile = {"gengamma": gengamma.ppf, "lognorm": lognorm.ppf, "gamma": gamma.ppf}
+    estimated_dynamics_first_moment = {"gengamma": gengamma.mean, "lognorm": lognorm.mean, "gamma": gamma.mean}
+
+    # Storage for critical values
+    dynamics_replacement_statistics = {}
+
+    # Loop over all sentences
+    for sentence in sentences:
+        per_sentence_statistics = []
+        # Loop over all subjects which have typed this sentence
+        for subject in df.loc[(df.sentence_id == sentence)].participant_id.unique():
+            coordinates = (df.participant_id == subject) & (df.sentence_id == sentence)
+            # Get all delta timestamps for this sentence, across all subjects (this is IKI)
+            if what_to_correct == "iki":
+                #  IKI = (key-down at time T) - (key-down at T-1)
+                # corrected[sentence][subject] = df.loc[coordinates].timestamp.diff().values
+                corrected[sentence][subject] = (
+                    df.loc[coordinates].keydown[1:].values - df.loc[coordinates].keydown[:-1].values
+                )
+            elif what_to_correct == "hold_time":
+                #  Hold time = (key-up) - (key-down)
+                corrected[sentence][subject] = df.loc[coordinates].keyup.values - df.loc[coordinates].keydown.values
+            elif what_to_correct == "pause":
+                # Pause = IKI - (hold time)
+                iki = df.loc[coordinates].keydown[1:].values - df.loc[coordinates].keydown[:-1].values
+                hold_time = df.loc[coordinates].keyup.values - df.loc[coordinates].keydown.values
+                pause = iki - hold_time[:-1]
+                # Store for later
+                corrected[sentence][subject] = np.array(pause)
+
+            # Append to get statistics over all participants
+            per_sentence_statistics.extend(list(corrected[sentence][subject]))
+
+        # Move to numpy array for easier computation
+        x = np.array(per_sentence_statistics)  # TODO: this is stupid fix this.
+        # Remove all NANs and remove all NEGATIVE values (this removes the first NaN value too)
+        x = x[~np.isnan(x)]
+        # Have to do in two operations because of NaN presence
+        x = x[x > 0.0]
+        # Fit suitable density for modelling correct replacement value
+        params_MLE = dynamics_funcs[correction_model](x)
+
+        # Set cut off value
+        cut_off_value = np.percentile(x, cut_off_percentile, interpolation="lower")
+
+        assert cut_off_value > 0, "INFO:\n\t value: {} \n\t sentence ID: {}".format(cut_off_value, sentence)
+
+        # Set replacement value
+        replacement_value = estimated_dynamics_first_moment[correction_model](*params_MLE)
+        # TODO: put this back
+        # assert replacement_value > 0, "INFO:\n\t value: {} \n\t sentence ID: {}".format(replacement_value, sentence)
+
+        # Store for replacement operation in next loop
+        dynamics_replacement_statistics[sentence] = (cut_off_value, replacement_value)
+
+    # Search all delta timestamps and replace which exeed cut_off_value
+    for sentence in sentences:
+        # Loop over all subjects which have typed this sentence
+        for subject in df.loc[(df.sentence_id == sentence)].participant_id.unique():
+
+            # Make temporary conversion to numpy array
+            x = corrected[sentence][subject]  # [1:]  # (remove the first entry as it is a NaN)
+            corrected[sentence][subject] = np.concatenate(  # Add back NaN to maintain index order
+                (
+                    # [np.nan],
+                    # Two conditions are used here
+                    np.where(
+                        np.logical_or(x > dynamics_replacement_statistics[sentence][0], x < 0),
+                        dynamics_replacement_statistics[sentence][1],
+                        x,
+                    ),
+                )
+            )
+
+    return corrected, dynamics_replacement_statistics
+
+
 def iki_pause_correction(
     df: pd.DataFrame,
     char_count_response_threshold: int = 40,
@@ -890,7 +967,7 @@ def iki_pause_correction(
         # Loop over all subjects which have typed this sentence
         for subject in df.loc[(df.sentence_id == sentence)].participant_id.unique():
 
-            # Get all delta timestamps for this sentence, across all subjects
+            # Get all delta timestamps for this sentence, across all subjects (this is IKI)
             tmp = df.loc[(df.sentence_id == sentence) & (df.participant_id == subject)].timestamp.diff().tolist()
             # Store for later
             corrected_ikis[sentence][subject] = np.array(tmp)
@@ -1014,6 +1091,7 @@ def create_char_iki_extended_data(
             # Drop indices that were removed above
             idx = np.array(character_indices_to_delete) + 1
             inter_key_intervals = np.delete(corrected_inter_key_intervals[sentence][subject], idx)
+
             # Sanity check
             assert len(inter_key_intervals) > char_count_response_threshold, "Subject: {} and sentence: {}".format(
                 subject, sentence
@@ -1074,22 +1152,28 @@ def create_char_data(
         Dictionary indexed by subjects, containing all sentences per subject
     """
 
-    if set(["participant_id", "key", "timestamp", "sentence_id"]).issubset(df.columns):
-        mode = 'MJFF_MODE'
-    elif set(["participant_id", "key", "keyup","keydown", "sentence_id"]).issubset(df.columns):
-        mode = 'MRC_MODE'
-        # MRC keydown is equivalent to MJFF keydown
-        df['timestamp']=df.keydown
-
-    print('Using mode: {}'.format(mode))
-
     # Filter out responses where the number of characters per typed
     # response, is below a threshold value (40 by default)
     df = df[df.groupby(["participant_id", "sentence_id"]).key.transform("count") > char_count_response_threshold]
     assert not df.empty
 
+    if set(["participant_id", "key", "timestamp", "sentence_id"]).issubset(df.columns):
+        mode = "MJFF_MODE"
+    elif set(["participant_id", "key", "keyup", "keydown", "sentence_id"]).issubset(df.columns):
+        mode = "MRC_MODE"
+        # MRC keydown is equivalent to MJFF keydown
+        df["timestamp"] = df.keydown
+        corrected_key_hold_times, _ = typing_dynamics_editor(df, "hold_time", char_count_response_threshold)
+        # corrected_key_pause_times, _ = typing_dynamics_editor(df, "pause", char_count_response_threshold)
+
+    print("Using mode: {}".format(mode))
+
     # Get the unique number of subjects
     subjects = sorted(set(df.participant_id))  # NOTE: set() is weakly random
+
+    # Corrected inter-key-intervals (i.e. timestamp difference / delta)
+    # corrected_inter_key_intervals, _ = iki_pause_correction(df, char_count_response_threshold)
+    corrected_inter_key_intervals, _ = typing_dynamics_editor(df, "iki", char_count_response_threshold)
 
     # All sentences will be stored here, indexed by their type
     character_only_sentences = defaultdict(dict)
@@ -1097,13 +1181,13 @@ def create_char_data(
     locations = defaultdict(dict)
     numeric_iki = defaultdict(dict)
     hold_down_time = defaultdict(dict)
-
+    pause_time = defaultdict(dict)
 
     # Loop over subjects
     for subject in subjects:
         # Not all subjects have typed all sentences hence we have to do it this way
         for sentence in df.loc[(df.participant_id == subject)].sentence_id.unique():
-
+            # print(subject, sentence)
             # Locate df segment to extract
             coordinates = (df.participant_id == subject) & (df.sentence_id == sentence)
 
@@ -1112,20 +1196,34 @@ def create_char_data(
                 df.loc[coordinates, "key"].tolist(), removal_character=backspace_char, invokation_type=invokation_type
             )
 
-            # get timestamps for key presses, remove timestamps for deleted keys, calculate iki and store in dict
-            timings = df.loc[coordinates,'timestamp'].values
-            corrected_timings = np.delete(timings,character_indices_to_delete)
-            iki_timings = corrected_timings[1:] - corrected_timings[:-1]
-            numeric_iki[subject][sentence] = list(iki_timings)
-
-            # Need to respect the lower limit on the sentence length
-            if len(corrected_sentence) < char_count_response_threshold:
-                continue
+            # Get timestamps for key presses, remove timestamps for deleted keys, calculate iki and store in dict
+            # timings = df.loc[coordinates, "timestamp"].values
+            # corrected_timings = np.delete(timings, character_indices_to_delete)
+            # iki_timings = corrected_timings[1:] - corrected_timings[:-1]
+            # numeric_iki[subject][sentence] = list(iki_timings)
+            # assert all(
+            #     i > 0 for i in numeric_iki[subject][sentence]
+            # ), "Negative IKI for subject {} at sentence {}.".format(subject, sentence)
+            # if all([i > 0 for i in numeric_iki[subject][sentence]]):
+            #     negative_IKI.append((subject, sentence))
 
             # Note that sentences are lower-cased here
             character_only_sentences[subject][sentence] = "".join(corrected_sentence).lower()
             character_only_sentences_list[subject][sentence] = [c.lower() for c in corrected_sentence]
+            # Drop indices that were removed above
+            numeric_iki[subject][sentence] = list(
+                np.delete(corrected_inter_key_intervals[sentence][subject], character_indices_to_delete)
+            )
+            assert len(numeric_iki[subject][sentence]) == len(character_only_sentences[subject][sentence]) - 1, (
+                len(numeric_iki[subject][sentence]),
+                len(character_only_sentences[subject][sentence]) - 1,
+            )
 
+            # print(
+            #     "IKI: len(chars) == {}, len(iki) == {}".format(
+            #         len(character_only_sentences[subject][sentence]), len(numeric_iki[subject][sentence])
+            #     )
+            # )
             if "location" in df.columns:
                 # Get the key location [only for MRC dataset]
                 keyboard_locs = df.loc[coordinates, "location"].values
@@ -1134,16 +1232,51 @@ def create_char_data(
                 assert len(keyboard_locs) == len(character_only_sentences[subject][sentence])
                 locations[subject][sentence] = convert(keyboard_locs)
 
-            if mode == 'MRC_MODE':
-                keypress_timings = df.loc[coordinates,'keyup'].values - df.loc[coordinates, 'keydown'].values
+            if mode == "MRC_MODE":
+                # keypress_timings = df.loc[coordinates, "keyup"].values - df.loc[coordinates, "keydown"].values
+                # keypress_timings = np.delete(keypress_timings, character_indices_to_delete)
+                # assert len(keypress_timings) == len(character_only_sentences[subject][sentence])
+                # hold_down_time[subject][sentence] = list(keypress_timings)
 
-                keypress_timings = np.delete(keypress_timings, character_indices_to_delete)
-                assert len(keypress_timings) == len(character_only_sentences[subject][sentence])
+                # pause[subject][sentence] = [
+                #     a - b for a, b in zip(numeric_iki[subject][sentence], hold_down_time[subject][sentence][:-1])
+                # ]
+
+                keypress_timings = np.delete(corrected_key_hold_times[sentence][subject], character_indices_to_delete)
+                assert len(keypress_timings) == len(character_only_sentences[subject][sentence]), (
+                    len(keypress_timings),
+                    len(character_only_sentences[subject][sentence]),
+                )
                 hold_down_time[subject][sentence] = list(keypress_timings)
+                # print(
+                #     "hold_down: len(chars) == {}, len(hold_down) == {}".format(
+                #         len(character_only_sentences[subject][sentence]), len(hold_down_time[subject][sentence])
+                #     )
+                # )
 
-    if mode == 'MRC_MODE':
-        return character_only_sentences, locations, numeric_iki, character_only_sentences_list, hold_down_time
+                # Get pause between key-presses
+                pause = [i - j for i, j in zip(numeric_iki[subject][sentence], hold_down_time[subject][sentence][:-1])]
+                # np.delete(corrected_key_pause_times[sentence][subject], character_indices_to_delete)
+                assert len(pause) == len(character_only_sentences[subject][sentence]) - 1, (
+                    len(pause),
+                    len(character_only_sentences[subject][sentence]) - 1,
+                )
+                pause_time[subject][sentence] = pause
+                # print(
+                #     "pause: len(chars) == {}, len(pause) == {}".format(
+                #         len(character_only_sentences[subject][sentence]), len(pause_time[subject][sentence])
+                #     )
+                # )
 
+    if mode == "MRC_MODE":
+        return (
+            character_only_sentences,
+            locations,
+            numeric_iki,
+            character_only_sentences_list,
+            hold_down_time,
+            pause_time,
+        )
 
     return character_only_sentences, locations, numeric_iki, character_only_sentences_list
 
@@ -1534,7 +1667,9 @@ def universal_backspace_implementer(
     return invoked_sentence, indicator_indices
 
 
-def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame, iki_dict: dict = None, sentence_list_dict: dict = None) -> pd.DataFrame:
+def create_dataframe_from_processed_data(
+    my_dict: dict, df_meta: pd.DataFrame, iki_dict: dict = None, sentence_list_dict: dict = None
+) -> pd.DataFrame:
     """
     Function creates a pandas DataFrame which will be used by the NLP model
     downstream.
@@ -1572,7 +1707,14 @@ def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame, i
             )
         )
     df = pd.concat(final_out, axis=0)
-    df.columns = ["Participant_ID", "Diagnosis", "Sentence_ID", "Preprocessed_typed_sentence", 'IKI_timings','PPTS_list']
+    df.columns = [
+        "Participant_ID",
+        "Diagnosis",
+        "Sentence_ID",
+        "Preprocessed_typed_sentence",
+        "IKI_timings",
+        "PPTS_list",
+    ]
 
     # Final check for empty values
     df["Preprocessed_typed_sentence"].replace("", np.nan, inplace=True)
@@ -1584,9 +1726,15 @@ def create_dataframe_from_processed_data(my_dict: dict, df_meta: pd.DataFrame, i
     return df
 
 
-def create_dataframe_from_processed_data_mrc(my_dict: dict, location_dict: dict, iki_dict: dict,
-                                             sentence_list_dict: dict, hold_down_dict: dict,
-                                             df_meta: pd.DataFrame) -> pd.DataFrame:
+def create_dataframe_from_processed_data_mrc(
+    my_dict: dict,
+    location_dict: dict,
+    iki_dict: dict,
+    sentence_list_dict: dict,
+    hold_down_dict: dict,
+    pause_dict: dict,
+    df_meta: pd.DataFrame,
+) -> pd.DataFrame:
     """
     Function creates a pandas DataFrame which will be used by the NLP model
     downstream.
@@ -1620,14 +1768,24 @@ def create_dataframe_from_processed_data_mrc(my_dict: dict, location_dict: dict,
                         iki_dict[participant_id][sent_id] if iki_dict is not None else np.nan,
                         sentence_list_dict[participant_id][sent_id] if sentence_list_dict is not None else np.nan,
                         hold_down_dict[participant_id][sent_id] if hold_down_dict is not None else np.nan,
+                        pause_dict[participant_id][sent_id] if hold_down_dict is not None else np.nan,
                     ]
                     for sent_id in my_dict[participant_id].keys()
                 ]
             )
         )
     df = pd.concat(final_out, axis=0)
-    df.columns = ["Participant_ID", "Diagnosis", "Sentence_ID", "Preprocessed_typed_sentence",
-                  'locations', 'IKI_timings','PPTS_list', 'hold_time']
+    df.columns = [
+        "Participant_ID",
+        "Diagnosis",
+        "Sentence_ID",
+        "Preprocessed_typed_sentence",
+        "locations",
+        "IKI_timings",
+        "PPTS_list",
+        "hold_time",
+        "pause_time",
+    ]
 
     # Final check for empty values
     df["Preprocessed_typed_sentence"].replace("", np.nan, inplace=True)
@@ -1701,7 +1859,9 @@ def create_MJFF_dataset(
         out, _, iki_timings, character_only_sentences_list = create_char_data(df, invokation_type=invokation_type)
 
     # Final formatting of typing data
-    df = create_dataframe_from_processed_data(out, df_meta,iki_timings,character_only_sentences_list).reset_index(drop=True)
+    df = create_dataframe_from_processed_data(out, df_meta, iki_timings, character_only_sentences_list).reset_index(
+        drop=True
+    )
 
     if language == "english":
         # Remap participant identifiers so that that e.g. 10a -> 10 and 10b -> 10.
