@@ -82,7 +82,7 @@ class preprocessMRC:
         return df
 
 
-def create_MRC_dataset(include_time=False, attempt=1, invokation_type=1, drop_shift=True) -> pd.DataFrame:
+def create_MRC_dataset(include_time=False, attempt=None, invokation_type=1, drop_shift=True) -> pd.DataFrame:
     """
     End-to-end creation of raw data to NLP readable train and test sets.
 
@@ -110,6 +110,8 @@ def create_MRC_dataset(include_time=False, attempt=1, invokation_type=1, drop_sh
     elif attempt == 2:
         # Controls vs medicated patients
         df = pd.concat([df[(df.diagnosis == 1) & (df.medication == 1)], df[df.diagnosis == 0]], ignore_index=True)
+    elif not attempt:
+        pass
     else:
         raise ValueError
 
@@ -1224,6 +1226,7 @@ def create_char_data(
             #         len(character_only_sentences[subject][sentence]), len(numeric_iki[subject][sentence])
             #     )
             # )
+
             if "location" in df.columns:
                 # Get the key location [only for MRC dataset]
                 keyboard_locs = df.loc[coordinates, "location"].values
@@ -1233,6 +1236,7 @@ def create_char_data(
                 locations[subject][sentence] = convert(keyboard_locs)
 
             if mode == "MRC_MODE":
+
                 # keypress_timings = df.loc[coordinates, "keyup"].values - df.loc[coordinates, "keydown"].values
                 # keypress_timings = np.delete(keypress_timings, character_indices_to_delete)
                 # assert len(keypress_timings) == len(character_only_sentences[subject][sentence])
@@ -1248,6 +1252,7 @@ def create_char_data(
                     len(character_only_sentences[subject][sentence]),
                 )
                 hold_down_time[subject][sentence] = list(keypress_timings)
+
                 # print(
                 #     "hold_down: len(chars) == {}, len(hold_down) == {}".format(
                 #         len(character_only_sentences[subject][sentence]), len(hold_down_time[subject][sentence])
@@ -1262,6 +1267,7 @@ def create_char_data(
                     len(character_only_sentences[subject][sentence]) - 1,
                 )
                 pause_time[subject][sentence] = pause
+
                 # print(
                 #     "pause: len(chars) == {}, len(pause) == {}".format(
                 #         len(character_only_sentences[subject][sentence]), len(pause_time[subject][sentence])
