@@ -75,7 +75,7 @@ class preprocessMRC:
         """
         print("\tMedical Research Council funded PD copy-typing data.\n")
 
-    def __call__(self, which_attempt=1) -> pd.DataFrame:
+    def __call__(self, which_attempt=None) -> pd.DataFrame:
         df = create_MRC_dataset(attempt=which_attempt)
         # Print summary stats of what we have loaded.
         dataset_summary_statistics(df)
