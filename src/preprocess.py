@@ -111,7 +111,7 @@ def create_MRC_dataset(include_time=False, attempt=None, invokation_type=1, drop
         # Controls vs medicated patients
         df = pd.concat([df[(df.diagnosis == 1) & (df.medication == 1)], df[df.diagnosis == 0]], ignore_index=True)
     elif not attempt:
-        # Use all data
+        #  Use all data
         pass
     else:
         raise ValueError
@@ -145,6 +145,7 @@ def create_MRC_dataset(include_time=False, attempt=None, invokation_type=1, drop
             pause_dict,
         ) = create_char_data(df, backspace_char=backspace_char, invokation_type=invokation_type)
 
+
     # Final formatting of typing data (note that df contains the diagnosis here)
     final = create_dataframe_from_processed_data_mrc(
         sentence_dictionary,
@@ -156,8 +157,11 @@ def create_MRC_dataset(include_time=False, attempt=None, invokation_type=1, drop
         df,
     ).reset_index(drop=True)
 
+    #  Re-map the sentence-ID columns, got messed up during logging
+    df = remap_sentence_ids_for_control_subjects_mrc(final)
+
     # Return the empirical data and the reference sentences for downstream tasks
-    return final
+    return df
 
 
 def process_mrc(df: pd.DataFrame, unk_symbol="£") -> pd.DataFrame:
@@ -237,6 +241,16 @@ def process_mrc(df: pd.DataFrame, unk_symbol="£") -> pd.DataFrame:
 
 def modifier_key_replacements() -> dict:
     return {"backspace": "α", "shift": "β", "control": "γ", "capslock": "δ", "meta": "ε", "tab": "ζ", "alt": "η"}
+
+
+def remap_sentence_ids_for_control_subjects_mrc(df):
+    # PD subjects have ID numbers which are all less than 1000
+    control_subjects = [i for i in df.Participant_ID.unique() if i > 1000]
+    target_maps = [str(i) for i in [2, 4, 5, 3, 1, 10, 9, 7, 8, 14, 6, 15, 12, 11, 13]]
+    correct_sentence_id_mapping = dict(zip(list(df.Sentence_ID.unique()), target_maps))
+    A = df.loc[(df.Participant_ID.isin(control_subjects))]["Sentence_ID"].map(correct_sentence_id_mapping).tolist()
+    df.loc[(df.Participant_ID.isin(control_subjects)), "Sentence_ID"] = A
+    return df
 
 
 def assign_medication_column(df):
