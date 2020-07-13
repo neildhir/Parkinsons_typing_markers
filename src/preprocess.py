@@ -103,7 +103,7 @@ def create_MRC_dataset(include_time=False, attempt=None, invokation_type=1, drop
     shift_char = "β"
     df = process_mrc(pd.read_csv(data_root / "MRCData-processed-interpolated.csv"))
 
-    # Select which attempt we are interested in, only English has attempts
+    # Select which attempt we are interested in
     if attempt == 1:
         # Controls vs unmedicated patients
         df = df.loc[(df.medication == 0)]
@@ -111,6 +111,7 @@ def create_MRC_dataset(include_time=False, attempt=None, invokation_type=1, drop
         # Controls vs medicated patients
         df = pd.concat([df[(df.diagnosis == 1) & (df.medication == 1)], df[df.diagnosis == 0]], ignore_index=True)
     elif not attempt:
+        # Use all data
         pass
     else:
         raise ValueError
@@ -121,12 +122,6 @@ def create_MRC_dataset(include_time=False, attempt=None, invokation_type=1, drop
         df.drop(df.index[(df.key == shift_char)], inplace=True)
         # Reset index so that we can sort it properly in the next step
         df.reset_index(drop=True, inplace=True)
-
-    # Sort of all timestamps so that they are monotonically increasing (though not strictly)
-    for i in df.participant_id.unique():
-        for j in df.loc[(df.participant_id == i)].sentence_id.unique():
-            coordinates = (df.participant_id == i) & (df.sentence_id == j)
-            df[coordinates].sort_values(by="keydown", inplace=True)
 
     assert all(df.groupby(["participant_id", "sentence_id"]).key.transform("count") > 40)
 
