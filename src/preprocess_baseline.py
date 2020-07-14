@@ -345,20 +345,3 @@ def get_X_and_y_from_df(df):
         sets[j] = (X, y)
 
     return sets
-
-
-def remap_sentence_ids_for_control_subjects_mrc(df):
-    # PD subjects have ID numbers which are all less than 1000
-    control_subjects = [i for i in df.participant_id.unique() if i < 1000]
-    correct_sentence_id_mapping = dict(zip(list(range(1, 16)), [3, 1, 5, 2, 4, 11, 8, 9, 7, 6, 14, 13, 15, 10, 12]))
-    A = df.loc[(df.participant_id.isin(control_subjects))]["sentence_id"].map(correct_sentence_id_mapping).tolist()
-    df.loc[(df.participant_id.isin(control_subjects)), "sentence_id"] = A
-    return df
-
-
-def remap_sentence_ids_for_pd_subjects_mrc(df):
-    pd_subjects = [i for i in df.participant_id.unique() if i > 1000]
-    correct_sentence_id_mapping = dict(zip(list(range(1, 16)), [3, 1, 5, 2, 4, 11, 8, 9, 7, 6, 14, 13, 15, 10, 12]))
-    A = df.loc[(df.participant_id.isin(pd_subjects))]["sentence_id"].map(correct_sentence_id_mapping).tolist()
-    df.loc[(df.participant_id.isin(pd_subjects)), "sentence_id"] = A
-    return df
