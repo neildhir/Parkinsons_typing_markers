@@ -95,7 +95,7 @@ def transform2participant_lvl(network_df: pd.DataFrame):
     return table
 
 
-def sentence_lvl_network_plot(data_root: Path, folder_name: str, attempt: int = 0):
+def sentence_lvl_network_plot(data_root: Path, df: pd.DataFrame, folder_name: str, attempt: int = 0):
     # Figure parameters
     lw = 3
     plt.figure(figsize=(5, 5))
@@ -108,13 +108,13 @@ def sentence_lvl_network_plot(data_root: Path, folder_name: str, attempt: int = 
     interp_tpr = []
     x = np.linspace(0, 1, 100)
     num_samp = []
-    for pth in data_root.glob('fold*'):
-        df = pd.read_csv(pth)
+    for fold_idx in df.fold.unique():
+        sub_df = df[df.fold == fold_idx]
         if 'Attempt' in df.columns:
-            df = df[df.Attempt == attempt]
+            sub_df = sub_df[sub_df.Attempt == attempt]
 
-        y = df['Diagnosis'].values
-        pred = df['rough'].values
+        y = sub_df['Diagnosis'].values
+        pred = sub_df['rough'].values
         num_samp.append(len(pred))
 
         fpr, tpr, _ = roc_curve(y, pred)
@@ -211,9 +211,8 @@ def sentence_lvl_baseline_plot(data_root: Path, df: pd.DataFrame, folder_name: s
     return 0
 
 
-def sentence_lvl_plots(data_root: Path, df: pd.DataFrame, attempt):
-    folder_name = 'figures_attempt{}'.format(attempt)
-    sentence_lvl_network_plot(data_root, folder_name, attempt=attempt)
+def sentence_lvl_plots(data_root: Path, df: pd.DataFrame, attempt, folder_name):
+    sentence_lvl_network_plot(data_root, df ,folder_name, attempt=attempt)
     sentence_lvl_baseline_plot(data_root, df, folder_name)
     plt.close()
     return 0
@@ -358,7 +357,7 @@ def make_baseline_columns(df):
     return df
 
 
-def main(data_root: str):
+def main(data_root: str, medicated_split: bool = False):
     data_root = Path(data_root)
 
     dfs = []
@@ -397,6 +396,30 @@ def main(data_root: str):
 
             participant_table = transform2participant_lvl(sub_df)
             participant_lvl_plots(data_root, participant_table, network_features, 'figures_attempt{}'.format(attempt))
+    elif medicated_split:
+        print('Warning: Medicated Split only implemented for the MRC dataset')
+        medication_info = pd.read_csv("../../data/MRC/MedicationInfo.csv")
+        medication_info.rename(columns = {'TypingID': 'Participant_ID'},inplace = True)
+
+        network_df = network_df.merge(medication_info, on='Participant_ID', how = 'left')
+        network_df.fillna(-1,inplace = True)
+        control_mask = network_df.MEDICATED == -1
+
+
+        for is_medicated in [0,1]:
+            med_mask = network_df.MEDICATED == is_medicated
+
+            sub_df = network_df[med_mask | control_mask]
+            print(sub_df.shape, network_df.shape)
+
+            sentence_lvl_plots(data_root, sub_df, attempt, folder_name='medicated{}'.format(is_medicated))
+
+            participant_table = transform2participant_lvl(sub_df)
+            participant_lvl_plots(data_root, participant_table, network_features, 'medicated{}'.format(is_medicated))
+
+
+
+
     else:
         #baseline_df = pd.read_csv(baseline_path)
         #df = pd.merge(network_df, baseline_df, on=['Participant_ID', 'Sentence_ID', 'Diagnosis'], how='inner', )
@@ -404,6 +427,7 @@ def main(data_root: str):
         sentence_lvl_plots(data_root, df, 1)
         participant_table = transform2participant_lvl(df)
         participant_lvl_plots(data_root, participant_table, network_features, 'figures_attempt1')
+
 
     return 0
 
@@ -415,6 +439,9 @@ if __name__ == '__main__':
                         type=str,
                         required=True,
                         help='path to data')
+    parser.add_argument('-ms', '--medicated_split',
+                        action = 'store_true',
+                        help='split evaluation for medicated / un-medicated')
     args = parser.parse_args()
 
-    main(data_root=args.data_path)
+    main(data_root=args.data_path, medicated_split=args.medicated_split)

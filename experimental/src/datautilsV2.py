@@ -61,8 +61,11 @@ def participant_normalise(df, how='divmean'):
     cols2normalise  = ['IKI_timings']
     if 'hold_time' in df.columns:
         cols2normalise = cols2normalise + ['hold_time']
+    if 'pause_time' in df.columns:
+        cols2normalise = cols2normalise + ['pause_time']
 
 
+    print('Normalising: {}'.format(cols2normalise))
 
     for normcol in cols2normalise:
         df[normcol] = df[normcol].apply(lambda x: np.asarray(x))
@@ -167,7 +170,7 @@ def mk_char2vec_dataset(df: pd.DataFrame, hold_time: bool):
 def mk_standard_dataset(df: pd.DataFrame, char2idx: dict, hold_time: bool):
     extra_channels = 1
     if hold_time:
-        extra_channels += 1
+        extra_channels += 2
     channels = len(char2idx) + extra_channels
     X = []
     y = df.Diagnosis.values
@@ -185,7 +188,8 @@ def mk_standard_dataset(df: pd.DataFrame, char2idx: dict, hold_time: bool):
         x[1:, -1] = IKI_timings
 
         if hold_time:
-            x[:,-2] = row.hold_time
+            x[:, -2] = row.hold_time
+            x[1:, -3] = row.pause_time
 
 
         X.append(x)
@@ -208,7 +212,8 @@ def mk_timeonly_dataset(df: pd.DataFrame, hold_time: bool):
         x[1:, -1] = IKI_timings
 
         if hold_time:
-            x[:,-2] = row.hold_time
+            x[:, -2] = row.hold_time
+            x[:, -3] = row.pause_time
         space_locations.append(np.where(PPTS_list == ' ')[0])
         X.append(x)
     return np.asarray(X), y, space_locations
@@ -225,6 +230,11 @@ def adjust_range(df, how='minmax'):
     cols2normalise  = ['IKI_timings']
     if 'hold_time' in df.columns:
         cols2normalise = cols2normalise + ['hold_time']
+
+    if 'pause_time' in df.columns:
+        cols2normalise = cols2normalise + ['pause_time']
+
+    print('Adjusting range for: {}'.format(cols2normalise))
 
     for normcol in cols2normalise:
 
@@ -275,6 +285,10 @@ def make_experiment_dataset(data_path, fold_path, participant_norm, global_norm,
     if 'hold_time' in df.columns:
         df['hold_time'] = df.hold_time.apply(lambda x: eval(x))
         df['hold_time_original'] = df['hold_time']
+
+    if 'pause_time' in df.columns:
+        df['pause_time'] = df.pause_time.apply(lambda x: eval(x))
+        df['pause_time_original'] = df['pause_time']
 
     folds = pd.read_csv(fold_path)
 
