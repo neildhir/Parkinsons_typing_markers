@@ -130,7 +130,7 @@ def mk_char2vec_dataset(df: pd.DataFrame, hold_time: bool):
     char2vec = KeyedVectors.load('cbow10_w3.wv')
     extra_channels = 1
     if hold_time:
-        extra_channels += 1
+        extra_channels += 2
     cv_size = len(char2vec['a'])
     channels = cv_size + extra_channels
     X = []
@@ -159,6 +159,7 @@ def mk_char2vec_dataset(df: pd.DataFrame, hold_time: bool):
 
         if hold_time:
             x[:,-2] = row.hold_time
+            x[1:, -3] = row.pause_time
 
 
         X.append(x)
@@ -199,7 +200,7 @@ def mk_standard_dataset(df: pd.DataFrame, char2idx: dict, hold_time: bool):
 def mk_timeonly_dataset(df: pd.DataFrame, hold_time: bool):
     channels = 1
     if hold_time:
-        channels += 1
+        channels += 2
 
     X = []
     space_locations = []
@@ -209,11 +210,11 @@ def mk_timeonly_dataset(df: pd.DataFrame, hold_time: bool):
         IKI_timings = row.IKI_timings
         x = np.zeros((len(PPTS_list), channels))
 
-        x[1:, -1] = IKI_timings
+        x[1:, 0] = IKI_timings
 
         if hold_time:
-            x[:, -2] = row.hold_time
-            x[:, -3] = row.pause_time
+            x[:, 1] = row.hold_time
+            x[1:, 2] = row.pause_time
         space_locations.append(np.where(PPTS_list == ' ')[0])
         X.append(x)
     return np.asarray(X), y, space_locations

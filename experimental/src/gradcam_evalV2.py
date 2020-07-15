@@ -46,7 +46,7 @@ def grad_cam(input_model, image, cls, layer_name):
 
 
 
-def plot_gradcam(g, sent, timings, saveto, metastring):
+def plot_gradcam(g, sent, timings, hold_time, pause_time, saveto, metastring):
     fig, ax = plt.subplots(1, 1, figsize=(len(sent) / 2, 3))
     fig.tight_layout()
     # bup = ax.text(0.0,0.02,sent,fontsize = 62)
@@ -73,7 +73,16 @@ def plot_gradcam(g, sent, timings, saveto, metastring):
                 horizontalalignment='center')
         ax.text(points[i][0, 0], points[i][0, 1] - 0.003, s='{:.0f}'.format(timings[i]), fontsize=12, verticalalignment='top',
                 horizontalalignment='center',
-                rotation = -45)
+                rotation = 0)
+        ax.text(points[i][0, 0], points[i][0, 1] - 0.006, s='{:.0f}'.format(hold_time[i]), fontsize=12,
+                verticalalignment='top',
+                horizontalalignment='center',
+                rotation=0)
+        ax.text(points[i][0, 0], points[i][0, 1] - 0.009, s='{:.0f}'.format(pause_time[i]), fontsize=12,
+                verticalalignment='top',
+                horizontalalignment='center',
+                rotation=0)
+
 
     plt.autoscale(enable=True, axis='both', tight=None)
 
@@ -99,6 +108,8 @@ def main(root_dir):
         df = pd.read_csv(root / 'fold_{}.csv'.format(fold_idx))
         df['PPTS_list'] = df.PPTS_list.apply(lambda x: eval(x))
         df['IKI_timings_original'] = df.IKI_timings_original.apply(lambda x: eval(x))
+        df['hold_time_original'] = df.hold_time_original.apply(lambda x: eval(x))
+        df['pause_time_original'] = df.pause_time_original.apply(lambda x: eval(x))
 
         layers  = ['conv1d_1','conv1d_2']
 
@@ -106,11 +117,13 @@ def main(root_dir):
         X = np.load(root / 'x_fold_{}.npy'.format(fold_idx))
 
         gradcam_data = []
-        df_meta = {'Participant_ID': [], 'Sentence_ID': [], 'Diagnosis': [], 'Target': [], 'Layer': []}
+        df_meta = {'Participant_ID': [], 'Sentence_ID': [], 'Diagnosis': [], 'Target': [], 'Layer': [], 'PPTS_list': []}
         for layer_name in layers:
             for i, x in enumerate(X):
                 sent = df.PPTS_list[i]
                 timings = np.insert(df.IKI_timings_original[i], 0, 0)
+                hold_time = df.hold_time_original[i]
+                pause_time = np.insert(df.pause_time_original[i], 0, 0)
                 sID = df.Sentence_ID[i]
                 pID = df.Participant_ID[i]
                 diag = df.Diagnosis[i]
@@ -130,6 +143,7 @@ def main(root_dir):
                     df_meta['Diagnosis'].append(diag)
                     df_meta['Target'].append(lbl)
                     df_meta['Layer'].append(layer_name)
+                    df_meta['PPTS_list'].append(sent)
                     gradcam_data.append(g)
 
 
@@ -137,7 +151,7 @@ def main(root_dir):
                     meta_string = 'pID: {}, sID: {}, diag: {}, p: {:.2f}, target: {}'.format(pID,sID,diag,prob,lbl)
                     saveto = root / 'gradcam' / 'pID{}_sID{}_cls{}_{}.png'.format(pID, sID,lbl,layer_name)
 
-                    #plot_gradcam(g,sent,timings,saveto,meta_string)
+                    plot_gradcam(g,sent,timings,hold_time,pause_time,saveto,meta_string)
                     print(i)
                     if (i % 100 == 0):
                         print('Logging fold {}..'.format(fold_idx))

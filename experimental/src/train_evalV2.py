@@ -21,7 +21,7 @@ import json
 def run_experiment(data_path, fold_path, prefix, participant_norm, global_norm, sentence_norm=False, hold_time=False,
                    feature_type='standard'):
     res_cols = ['Participant_ID', 'Diagnosis', 'Sentence_ID', 'fold', 'PPTS_list',
-                'IKI_timings_original',]# 'Attempt']
+                'IKI_timings_original', 'Attempt']
     if hold_time:
         res_cols = res_cols + ['hold_time_original']
 
@@ -156,7 +156,7 @@ def run_experiment(data_path, fold_path, prefix, participant_norm, global_norm, 
 
 if __name__ == '__main__':
 
-    ds = 'MRC'
+    ds = 'MJFFENG'
 
     if ds == 'MJFFENG':
         ### MJFF ENGLISH PATHS ###
@@ -190,13 +190,13 @@ if __name__ == '__main__':
     participant_norm = 'robust'
     global_norm = 'robust'
     sentence_norm = False
-    hold_time = True
+    hold_time = False
     features = 'standard'
 
     assert features in ['standard', 'char2vec', 'timeonly']
 
     ############
 
-    prefix = 'ALL_{}_P-{}_G-{}_S-{}_{}'.format(name, participant_norm, global_norm, int(sentence_norm),features)
+    prefix = 'SAFETYCHECK_{}_P-{}_G-{}_S-{}_{}'.format(name, participant_norm, global_norm, int(sentence_norm),features)
     run_experiment(data_path, fold_path, prefix, participant_norm, global_norm, sentence_norm, hold_time = hold_time, feature_type = features)
     print('Done')

@@ -39,17 +39,17 @@ def weighted_avg_and_std(values, weights):
     return (average, np.sqrt(variance))
 
 
-def make_plot_folder(data_root: Path, attempt):
-    for a in attempt:
+def make_plot_folder(data_root: Path, folder_name):
 
-        plot_folder = data_root / 'figures_attempt{}'.format(a)
-        sentence_lvl_folder = plot_folder / 'sentence_lvl'
-        participant_lvl_folder = plot_folder / 'participant_lvl'
 
-        if not os.path.exists(plot_folder):
-            os.makedirs(plot_folder)
-            os.makedirs(sentence_lvl_folder)
-            os.makedirs(participant_lvl_folder)
+    plot_folder = data_root / folder_name
+    sentence_lvl_folder = plot_folder / 'sentence_lvl'
+    participant_lvl_folder = plot_folder / 'participant_lvl'
+
+    if not os.path.exists(plot_folder):
+        os.makedirs(plot_folder)
+        os.makedirs(sentence_lvl_folder)
+        os.makedirs(participant_lvl_folder)
 
 
 def make_fold_data(fold, cols, data):
@@ -114,7 +114,7 @@ def sentence_lvl_network_plot(data_root: Path, df: pd.DataFrame, folder_name: st
             sub_df = sub_df[sub_df.Attempt == attempt]
 
         y = sub_df['Diagnosis'].values
-        pred = sub_df['rough'].values
+        pred = sub_df['tuned'].values
         num_samp.append(len(pred))
 
         fpr, tpr, _ = roc_curve(y, pred)
@@ -212,6 +212,9 @@ def sentence_lvl_baseline_plot(data_root: Path, df: pd.DataFrame, folder_name: s
 
 
 def sentence_lvl_plots(data_root: Path, df: pd.DataFrame, attempt, folder_name):
+
+    make_plot_folder(data_root,folder_name)
+
     sentence_lvl_network_plot(data_root, df ,folder_name, attempt=attempt)
     sentence_lvl_baseline_plot(data_root, df, folder_name)
     plt.close()
@@ -374,7 +377,7 @@ def main(data_root: str, medicated_split: bool = False):
         attempt = network_df.Attempt.unique()
     else:
         attempt = [1]
-    make_plot_folder(data_root, attempt)
+    #make_plot_folder(data_root, attempt)
 
     '''
     if 'MJFFENG' in data_root.stem:
@@ -424,7 +427,7 @@ def main(data_root: str, medicated_split: bool = False):
         #baseline_df = pd.read_csv(baseline_path)
         #df = pd.merge(network_df, baseline_df, on=['Participant_ID', 'Sentence_ID', 'Diagnosis'], how='inner', )
         df = network_df
-        sentence_lvl_plots(data_root, df, 1)
+        sentence_lvl_plots(data_root, df, 1,folder_name='figures_attempt1')
         participant_table = transform2participant_lvl(df)
         participant_lvl_plots(data_root, participant_table, network_features, 'figures_attempt1')
 
