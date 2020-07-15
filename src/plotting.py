@@ -22,18 +22,17 @@ def split(word):
     return [char.lower() for char in word]
 
 
-def get_sentence_stats(df, target_sentences, sentence_id, diagnosis=0, chars_to_consider=10):
+def get_sentence_stats(df, target_sentence, sentence_id, diagnosis, sub_str):
 
-    # load target sentences first
-    # assert sentence_id in range(0,target_sentences.shape[0])
-    ref_sent = split(
-        list(target_sentences[sentence_id - 1, :])[0]
-    )  # Note that the reference sentences are zero-indexed
-    print("This is the target sentence: {}".format(target_sentences[sentence_id - 1, :]))
-    print("Chars to consider: {}".format(ref_sent[:chars_to_consider]))
-    ref_chars = ref_sent[:chars_to_consider]
-    n = len(ref_chars)
+    print("This is the target sentence: {}".format(target_sentence))
+    print("Sub-string to consider: {}\n".format(sub_str))
+
+    # Get the index of the sub-string in the target sentence
+    first_char_idx = target_sentence.find(sub_str)
+    # Length of sub-string
+    n = len(sub_str)
     idxs = range(n)
+    sub_str_idx = range(first_char_idx, first_char_idx + n)
 
     iki_stats = {k: [] for k in idxs}
     hold_time_stats = {k: [] for k in idxs}
@@ -55,20 +54,19 @@ def get_sentence_stats(df, target_sentences, sentence_id, diagnosis=0, chars_to_
 
             # To make more sense of the statistics we only collect it _if_ the subject has typed same character
             # the reference sentence.
-            typed_sent = df.loc[coordinates, "Preprocessed_typed_sentence"].tolist()[0]
-            iki = df.loc[coordinates, "IKI_timings"].tolist()[0]
-            hold_time = df.loc[coordinates, "hold_time"].tolist()[0]
-            pause_time = df.loc[coordinates, "pause_time"].tolist()[0]
+            typed_sentence = df.loc[coordinates, "Preprocessed_typed_sentence"].item()
+            iki = df.loc[coordinates, "IKI_timings"].item()
+            hold_time = df.loc[coordinates, "hold_time"].item()
+            pause_time = df.loc[coordinates, "pause_time"].item()
 
             # Find char stats
-            for i in idxs:
-                # print(subject,sentence_id,typed_sent[c],ref_sent[c])
-                if typed_sent[i] == ref_chars[i]:
+            for i, j in enumerate(sub_str_idx):
+                if typed_sentence[j] == sub_str[i]:
                     iki_stats[i].append(iki[i])
                     hold_time_stats[i].append(hold_time[i])
                     pause_time_stats[i].append(pause_time[i])
 
-    return iki_stats, hold_time_stats, pause_time_stats, ref_chars
+    return iki_stats, hold_time_stats, pause_time_stats
 
 
 def create_dataframe_for_plotting(dict_times, ref_chars, assigned_diagnosis):
@@ -91,26 +89,25 @@ def create_binary_dataframe(control_times, pd_times, ref_chars):
     return A.append(B)
 
 
-def get_plotting_data(df, target_sentences, sent_ID, char_count):
+def get_plotting_data(df, target_sentence, sent_ID, sub_str):
 
-    iki_0, hold_time_0, pause_time_0, ref_chars = get_sentence_stats(
-        df, target_sentences=target_sentences, sentence_id=sent_ID, diagnosis=0, chars_to_consider=char_count
+    iki_0, hold_time_0, pause_time_0 = get_sentence_stats(
+        df, target_sentence=target_sentence, sentence_id=sent_ID, diagnosis=0, sub_str=sub_str
     )
-    iki_1, hold_time_1, pause_time_1, ref_chars = get_sentence_stats(
-        df, target_sentences=target_sentences, sentence_id=sent_ID, diagnosis=1, chars_to_consider=char_count
+    iki_1, hold_time_1, pause_time_1 = get_sentence_stats(
+        df, target_sentence=target_sentence, sentence_id=sent_ID, diagnosis=1, sub_str=sub_str
     )
 
     # Make dataframe
-    A = create_binary_dataframe(hold_time_0, hold_time_1, ref_chars)
-    B = create_binary_dataframe(iki_0, iki_1, ref_chars)
-    C = create_binary_dataframe(pause_time_0, pause_time_1, ref_chars)
+    A = create_binary_dataframe(hold_time_0, hold_time_1, sub_str)
+    B = create_binary_dataframe(iki_0, iki_1, sub_str)
+    C = create_binary_dataframe(pause_time_0, pause_time_1, sub_str)
     A["type"] = "Hold-down"
     B["type"] = "Inter-key interval"
     C["type"] = "Pause"
     tmp = A.append(B)  # Replace with concat
-    D = tmp.append(C)
 
-    return D, ref_chars
+    return tmp.append(C)
 
 
 def time_plot(df, ref_chars, sent_ID, y_min, y_max, save_me=False):
@@ -164,19 +161,31 @@ def plot_times(df, target_sentences, sentence_stats, save_me=False):
     save_me : bool, optional
         Call to save the plots or not.
 
-    Raises
-    ------
-    NotImplementedError
-        Single plot option not yet implemented.
+    Notes
+    -----
+    As of 15/07/2020 the follwing sentence_stats are used:
+
+    sentence_stats = {1:[13,-200, 800],
+                    2:[8,-200, 1200],
+                    3:[10,-200, 1000],
+                    4:[12,-200, 800],
+                    5:[12,-200, 1200],
+                    6:[9,-200, 800],
+                    7:[10,-300, 800],
+                    8:[9,-200, 800],
+                    9:[10,-200, 1200],
+                    10:[12,-200, 1200],
+                    11:[9,-200, 800],
+                    12:[12,-200, 800],
+                    13:[11,-200, 800],
+                    14:[11,-200, 1000],
+                    15:[13,-200, 1200]}
     """
-    if isinstance(sentence_stats, dict):
-        for sent_ID in sentence_stats.keys():
-            print("\nSentence: {}\n".format(sent_ID))
-            n_chars, y_min, y_max = sentence_stats[sent_ID]
-            df_plot, ref_chars = get_plotting_data(df, target_sentences, sent_ID, n_chars)
-            time_plot(df_plot, ref_chars, sent_ID, y_min, y_max, save_me=save_me)
-    else:
-        raise NotImplementedError
+    for sent_ID in sentence_stats.keys():
+        print("\nSentence: {}\n".format(sent_ID))
+        sub_str, y_min, y_max = sentence_stats[sent_ID]
+        df_plot = get_plotting_data(df, target_sentences[sent_ID - 1].item().lower(), sent_ID, sub_str.lower())
+        time_plot(df_plot, sub_str, sent_ID, y_min, y_max, save_me=save_me)
 
 
 # Universal update for fonts: https://jwalton.info/Embed-Publication-Matplotlib-Latex/

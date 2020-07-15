@@ -10,9 +10,10 @@ from pathlib import Path
 from typing import Tuple
 
 import numpy as np
+from statistics import median
 import pandas as pd
 from nltk.metrics import edit_distance  # Levenshtein
-from scipy.stats import gamma, gengamma, lognorm
+from scipy.stats import gamma, gengamma, lognorm, iqr
 
 from .__init_paths import *  # One should not do this, but here it is fine
 
@@ -75,14 +76,21 @@ class preprocessMRC:
         """
         print("\tMedical Research Council funded PD copy-typing data.\n")
 
-    def __call__(self, which_attempt=None) -> pd.DataFrame:
-        df = create_MRC_dataset(attempt=which_attempt)
-        # Print summary stats of what we have loaded.
-        dataset_summary_statistics(df)
-        return df
+    def __call__(self, robustly_scale=False) -> pd.DataFrame:
+        if robustly_scale:
+            df, df_scaled = create_MRC_dataset(robustly_scale=robustly_scale)
+            dataset_summary_statistics(df)
+            return df, df_scaled
+        else:
+            df = create_MRC_dataset(robustly_scale=robustly_scale)
+            # Print summary stats of what we have loaded.
+            dataset_summary_statistics(df)
+            return df
 
 
-def create_MRC_dataset(include_time=False, attempt=None, invokation_type=1, drop_shift=True) -> pd.DataFrame:
+def create_MRC_dataset(
+    robustly_scale=False, include_time=False, attempt=None, invokation_type=1, drop_shift=True
+) -> pd.DataFrame:
     """
     End-to-end creation of raw data to NLP readable train and test sets.
 
@@ -145,6 +153,41 @@ def create_MRC_dataset(include_time=False, attempt=None, invokation_type=1, drop
             pause_dict,
         ) = create_char_data(df, backspace_char=backspace_char, invokation_type=invokation_type)
 
+    if robustly_scale:
+        # Final formatting of typing data (note that df contains the diagnosis here)
+        final = create_dataframe_from_processed_data_mrc(
+            sentence_dictionary,
+            location_dictionary,
+            iki_timings_dictionary,
+            sentence_list_dictionary,
+            hold_down_dict,
+            pause_dict,
+            df,
+        ).reset_index(drop=True)
+
+        #  Re-map the sentence-ID columns, got messed up during logging
+        df_normal = remap_sentence_ids_for_control_subjects_mrc(final)
+
+        #  Robustly scale the results
+        iki_timings_dictionary = robustly_scale_timings(iki_timings_dictionary)
+        hold_down_dict = robustly_scale_timings(hold_down_dict)
+        pause_dict = robustly_scale_timings(pause_dict)
+
+        # Final formatting of typing data (note that df contains the diagnosis here)
+        final = create_dataframe_from_processed_data_mrc(
+            sentence_dictionary,
+            location_dictionary,
+            iki_timings_dictionary,
+            sentence_list_dictionary,
+            hold_down_dict,
+            pause_dict,
+            df,
+        ).reset_index(drop=True)
+
+        #  Re-map the sentence-ID columns, got messed up during logging
+        df_scaled = remap_sentence_ids_for_control_subjects_mrc(final)
+
+        return df_normal, df_scaled
 
     # Final formatting of typing data (note that df contains the diagnosis here)
     final = create_dataframe_from_processed_data_mrc(
@@ -162,6 +205,23 @@ def create_MRC_dataset(include_time=False, attempt=None, invokation_type=1, drop
 
     # Return the empirical data and the reference sentences for downstream tasks
     return df
+
+
+def robustly_scale_parameters(timings):
+    arr = np.hstack([timings[i] for i in timings.keys()])
+    return np.median(arr), iqr(arr)
+
+
+def robustly_scale_timings(my_dict):
+    # Loop over subjects
+    for participant_id in my_dict.keys():
+        # Get scaling paramers
+        median, iqr = robustly_scale_parameters(my_dict[participant_id])
+        # Not all subjects have typed all sentences hence we have to do it this way
+        for sent_id in my_dict[participant_id].keys():
+            my_dict[participant_id][sent_id] = [(x - median) / iqr for x in my_dict[participant_id][sent_id]]
+
+    return my_dict
 
 
 def process_mrc(df: pd.DataFrame, unk_symbol="£") -> pd.DataFrame:
@@ -246,8 +306,8 @@ def modifier_key_replacements() -> dict:
 def remap_sentence_ids_for_control_subjects_mrc(df):
     # PD subjects have ID numbers which are all less than 1000
     control_subjects = [i for i in df.Participant_ID.unique() if i > 1000]
-    target_maps = [i for i in [2, 4, 5, 3, 1, 10, 9, 7, 8, 14, 6, 15, 12, 11, 13]]
-    key_maps = np.arange(1,16)
+    target_maps = [str(i) for i in [2, 4, 5, 3, 1, 10, 9, 7, 8, 14, 6, 15, 12, 11, 13]]
+    key_maps = [str(i) for i in range(1, 16)]
     correct_sentence_id_mapping = dict(zip(key_maps, target_maps))
     A = df.loc[(df.Participant_ID.isin(control_subjects))]["Sentence_ID"].map(correct_sentence_id_mapping).tolist()
     df.loc[(df.Participant_ID.isin(control_subjects)), "Sentence_ID"] = A
