@@ -246,8 +246,9 @@ def modifier_key_replacements() -> dict:
 def remap_sentence_ids_for_control_subjects_mrc(df):
     # PD subjects have ID numbers which are all less than 1000
     control_subjects = [i for i in df.Participant_ID.unique() if i > 1000]
-    target_maps = [str(i) for i in [2, 4, 5, 3, 1, 10, 9, 7, 8, 14, 6, 15, 12, 11, 13]]
-    correct_sentence_id_mapping = dict(zip(list(df.Sentence_ID.unique()), target_maps))
+    target_maps = [i for i in [2, 4, 5, 3, 1, 10, 9, 7, 8, 14, 6, 15, 12, 11, 13]]
+    key_maps = np.arange(1,16)
+    correct_sentence_id_mapping = dict(zip(key_maps, target_maps))
     A = df.loc[(df.Participant_ID.isin(control_subjects))]["Sentence_ID"].map(correct_sentence_id_mapping).tolist()
     df.loc[(df.Participant_ID.isin(control_subjects)), "Sentence_ID"] = A
     return df
