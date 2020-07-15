@@ -17,6 +17,169 @@ from sklearn.manifold import TSNE
 from sklearn.metrics import auc, roc_curve
 from sklearn.preprocessing import label_binarize
 
+
+def split(word):
+    return [char.lower() for char in word]
+
+
+def get_sentence_stats(df, target_sentences, sentence_id, diagnosis=0, chars_to_consider=10):
+
+    # load target sentences first
+    # assert sentence_id in range(0,target_sentences.shape[0])
+    ref_sent = split(
+        list(target_sentences[sentence_id - 1, :])[0]
+    )  # Note that the reference sentences are zero-indexed
+    print("This is the target sentence: {}".format(target_sentences[sentence_id - 1, :]))
+    print("Chars to consider: {}".format(ref_sent[:chars_to_consider]))
+    ref_chars = ref_sent[:chars_to_consider]
+    n = len(ref_chars)
+    idxs = range(n)
+
+    iki_stats = {k: [] for k in idxs}
+    hold_time_stats = {k: [] for k in idxs}
+    pause_time_stats = {k: [] for k in idxs}
+
+    # Get the unique number of subjects
+    subjects = sorted(set(df.Participant_ID))  # NOTE: set() is weakly rando
+    # Loop over subjects
+    for subject in subjects:
+        # Not all subjects have typed all sentences hence we have to do it this way
+        if (
+            str(sentence_id)
+            in df.loc[(df.Participant_ID == subject) & (df.Diagnosis == diagnosis)].Sentence_ID.unique()
+        ):
+            # Sentence has been typed so we collect the stats
+
+            # Locate df segment to extract
+            coordinates = (df.Participant_ID == subject) & (df.Sentence_ID == str(sentence_id))
+
+            # To make more sense of the statistics we only collect it _if_ the subject has typed same character
+            # the reference sentence.
+            typed_sent = df.loc[coordinates, "Preprocessed_typed_sentence"].tolist()[0]
+            iki = df.loc[coordinates, "IKI_timings"].tolist()[0]
+            hold_time = df.loc[coordinates, "hold_time"].tolist()[0]
+            pause_time = df.loc[coordinates, "pause_time"].tolist()[0]
+
+            # Find char stats
+            for i in idxs:
+                # print(subject,sentence_id,typed_sent[c],ref_sent[c])
+                if typed_sent[i] == ref_chars[i]:
+                    iki_stats[i].append(iki[i])
+                    hold_time_stats[i].append(hold_time[i])
+                    pause_time_stats[i].append(pause_time[i])
+
+    return iki_stats, hold_time_stats, pause_time_stats, ref_chars
+
+
+def create_dataframe_for_plotting(dict_times, ref_chars, assigned_diagnosis):
+    times = []
+    chars = []
+    diagnosis = []
+    idxs = range(len(ref_chars))
+    for i, c in enumerate(idxs):
+        n = len(dict_times[i])
+        chars.extend(n * [c])
+        times.extend(dict_times[i])
+        diagnosis.extend(n * [assigned_diagnosis])
+
+    return DataFrame(data=list(zip(chars, times, diagnosis)), columns=["key", "time", "Class"])
+
+
+def create_binary_dataframe(control_times, pd_times, ref_chars):
+    A = create_dataframe_for_plotting(control_times, ref_chars, assigned_diagnosis="Controls")
+    B = create_dataframe_for_plotting(pd_times, ref_chars, assigned_diagnosis="PwPD")
+    return A.append(B)
+
+
+def get_plotting_data(df, target_sentences, sent_ID, char_count):
+
+    iki_0, hold_time_0, pause_time_0, ref_chars = get_sentence_stats(
+        df, target_sentences=target_sentences, sentence_id=sent_ID, diagnosis=0, chars_to_consider=char_count
+    )
+    iki_1, hold_time_1, pause_time_1, ref_chars = get_sentence_stats(
+        df, target_sentences=target_sentences, sentence_id=sent_ID, diagnosis=1, chars_to_consider=char_count
+    )
+
+    # Make dataframe
+    A = create_binary_dataframe(hold_time_0, hold_time_1, ref_chars)
+    B = create_binary_dataframe(iki_0, iki_1, ref_chars)
+    C = create_binary_dataframe(pause_time_0, pause_time_1, ref_chars)
+    A["type"] = "Hold-down"
+    B["type"] = "Inter-key interval"
+    C["type"] = "Pause"
+    tmp = A.append(B)  # Replace with concat
+    D = tmp.append(C)
+
+    return D, ref_chars
+
+
+def time_plot(df, ref_chars, sent_ID, y_min, y_max, save_me=False):
+    sns.set_context("notebook", font_scale=1.5)
+    sns.set_style("ticks")
+    g = sns.catplot(
+        x="key",
+        y="time",
+        hue="Class",
+        data=df,
+        col="type",
+        capsize=0.33,
+        palette="colorblind",
+        scale=0.9,
+        height=5,
+        legend_out=False,
+        aspect=0.9,
+        kind="point",
+        lw=6,
+        errwidth=2.0,
+        ci="sd",
+    )
+
+    g.map(plt.axhline, y=0, lw=1.5, ls="--", c="0.75", zorder=0)
+    g.set(ylim=(y_min, y_max))
+    g.fig.get_axes()[0].legend(loc="upper center", handletextpad=0.2, ncol=1)
+    g.set(xticklabels=ref_chars)
+    g.set_titles("{col_name}")
+    g.set_xlabels("")
+    g.set_ylabels("Duration $[10^{-2} \ s]$")
+
+    if save_me:
+        save_to = "../figures/time_plots/time_plot_sentence_ID_" + str(sent_ID) + ".pdf"
+        plt.savefig(save_to, bbox_inches="tight")
+        plt.close()
+
+    plt.show()
+
+
+def plot_times(df, target_sentences, sentence_stats, save_me=False):
+    """Function which plots the time-dynamics plot for all sentences.
+
+    Parameters
+    ----------
+    df : pandas dataframe
+        Preprocessed MRC data.
+    target_sentences : np.array
+        Array containing all the target sentences used for copy-typing.
+    sentence_stats : dict
+        Contains all the plotting options for each sentence.
+    save_me : bool, optional
+        Call to save the plots or not.
+
+    Raises
+    ------
+    NotImplementedError
+        Single plot option not yet implemented.
+    """
+    if isinstance(sentence_stats, dict):
+        for sent_ID in sentence_stats.keys():
+            print("\nSentence: {}\n".format(sent_ID))
+            n_chars, y_min, y_max = sentence_stats[sent_ID]
+            df_plot, ref_chars = get_plotting_data(df, target_sentences, sent_ID, n_chars)
+            time_plot(df_plot, ref_chars, sent_ID, y_min, y_max, save_me=save_me)
+    else:
+        raise NotImplementedError
+
+
+# Universal update for fonts: https://jwalton.info/Embed-Publication-Matplotlib-Latex/
 nice_fonts = {
     # Use LaTeX to write all text
     "text.usetex": True,
@@ -29,8 +192,6 @@ nice_fonts = {
     "xtick.labelsize": 8,
     "ytick.labelsize": 8,
 }
-# Universal update for fonts: https://jwalton.info/Embed-Publication-Matplotlib-Latex/
-mpl.rcParams.update(nice_fonts)
 
 
 def plot_superimposed_roc_curves(data: dict, filename=None, with_confidence_bounds=False) -> None:
@@ -38,6 +199,7 @@ def plot_superimposed_roc_curves(data: dict, filename=None, with_confidence_boun
     Note here that data comes as data[key] = (fpr,tpr).
     """
 
+    mpl.rcParams.update(nice_fonts)
     if filename:
         assert isinstance(filename, str)
 
@@ -121,6 +283,7 @@ def plot_superimposed_roc_curves(data: dict, filename=None, with_confidence_boun
 
 def plot_superimposed_roc_curves_with_confidence_bounds(data: dict, filename=None) -> None:
 
+    mpl.rcParams.update(nice_fonts)
     if filename:
         assert isinstance(filename, str)
 
