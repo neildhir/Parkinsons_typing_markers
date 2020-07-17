@@ -187,16 +187,16 @@ if __name__ == '__main__':
         ##########################
 
     ###PARAMS###
-    participant_norm = 'robust'
+    participant_norm = 'NONE'
     global_norm = 'robust'
     sentence_norm = False
     hold_time = False
-    features = 'standard'
+    features = 'char2vec'
 
     assert features in ['standard', 'char2vec', 'timeonly']
 
     ############
 
-    prefix = 'SAFETYCHECK_{}_P-{}_G-{}_S-{}_{}'.format(name, participant_norm, global_norm, int(sentence_norm),features)
+    prefix = 'NOPARICIPANTNORM_{}_P-{}_G-{}_S-{}_{}'.format(name, participant_norm, global_norm, int(sentence_norm),features)
     run_experiment(data_path, fold_path, prefix, participant_norm, global_norm, sentence_norm, hold_time = hold_time, feature_type = features)
     print('Done')

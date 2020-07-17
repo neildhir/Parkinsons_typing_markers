@@ -27,6 +27,52 @@ nice_fonts = {
 mpl.rcParams.update(nice_fonts)
 
 
+
+
+def one_outLR(df, features):
+    df['LR_proba'] = -1
+    pIDs = df['Participant_ID'].values
+
+    for pID in pIDs:
+        train_mask = df.Participant_ID != pID
+        target_mask = df.Participant_ID == pID
+
+        x = df[train_mask][features].values
+        y = df[train_mask].Diagnosis.values
+        x_target = df[target_mask][features].values
+
+        if len(x) > 100:
+            cw = None
+        else:
+            cw = 'balanced'
+
+        lr = LR(class_weight=cw)
+        lr.fit(x, y)
+
+        p_target = lr.predict_proba(x_target)[:, 1].item()
+        df.loc[target_mask, 'LR_proba'] = p_target
+    return df
+
+
+def bootstrap_roc(df, n_samp, frac=0.5):
+    pd_df = df[df.Diagnosis == 1][['Participant_ID', 'LR_proba', 'Diagnosis']]
+    hc_df = df[df.Diagnosis == 0][['Participant_ID', 'LR_proba', 'Diagnosis']]
+    x = np.linspace(0, 1, 50)
+    AUC, interp_tpr = [], []
+
+    for i in range(n_samp):
+        samp = pd.concat([pd_df.sample(frac=frac, replace=True), hc_df.sample(frac=frac, replace=True)])
+        fpr, tpr, _ = roc_curve(samp.Diagnosis.values, samp.LR_proba)
+        auc_score = auc(fpr, tpr)
+        AUC.append(auc_score)
+        interp_tpr.append(np.interp(x, xp=fpr, fp=tpr))
+
+    mean = np.mean(interp_tpr, axis=0)
+    std = np.std(interp_tpr, axis=0)
+
+    return (mean, std, np.mean(AUC), np.std(AUC))
+
+
 def weighted_avg_and_std(values, weights):
     """
     Return the weighted average and standard deviation.
@@ -296,6 +342,56 @@ def participant_lvl_plots(data_root: Path, participant_table: pd.DataFrame, netw
     return 0
 
 
+def participant_lvl_plotsV2(data_root: Path, participant_table: pd.DataFrame, network_features: list, folder_name: str):
+
+    #IKI_mean_std = ['IKI_mean', 'IKI_std']
+    IKI_median_iqr = ['IKI_median', 'IKI_iqr']
+
+
+    experiments = {#'mean_p': mean_p_features,
+                   #'RandomForest IKI_mean_std': IKI_mean_std,
+                   #'LogReg IKI_mean_std': IKI_mean_std,
+                   #'RandomForest IKI_median_iqr': IKI_median_iqr,
+                   'LogReg IKI_median_iqr': IKI_median_iqr,
+                   #'IKI+ED': IKI_features + ED_features,
+                   #'mean_p+IKI': mean_p_features + IKI_features,
+                   #'mean_p+IKI+ED': mean_p_features + IKI_features + ED_features,
+                   #'network+IKI': network_features + IKI_features,
+                   #'network+IKI+ED': network_features + IKI_features + ED_features,
+                   #'RandomForest network': network_features,
+                   'LogReg network': network_features}
+
+    for exp_name, exp_features in experiments.items():
+
+        exp_df = one_outLR(participant_table,exp_features)
+
+        mean, std, auc_mean, auc_std = bootstrap_roc(exp_df, n_samp = 1000, frac = 1.0)
+        x = np.linspace(0,1,50)
+
+        lw = 3
+        plt.figure(figsize=(5, 5))
+        plt.axis('equal')
+        plt.grid(True, alpha=0.3)
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.0])
+
+        plt.plot(x, mean, color='darkorange', lw=lw,
+                 label='AUC: {:.2f} ({:.2f})'.format(auc_mean, auc_std))
+        plt.fill_between(x, mean + std, mean - std, alpha=0.2, color='darkorange')
+        plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--', label='Chance')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.legend(loc='lower right')
+        save_to = data_root / folder_name / 'participant_lvl' / (exp_name + '_ROC.pdf')
+        plt.savefig(save_to)
+        plt.close()
+
+    return 0
+
+
+
 def log_reg_exp(x_train, y_train, x_test):
     clf = LR()
     clf.fit(x_train, y_train)
@@ -309,46 +405,6 @@ def random_forest_exp(x_train, y_train, x_test):
     p = clf.predict_proba(x_test)[:, 1]
     return p
 
-def plot_experiment(p_list: list,y_test_list: list,folder_name,exp_name,):
-    lw = 3
-    plt.figure(figsize=(5, 5))
-    plt.axis('equal')
-    plt.grid(True, alpha=0.3)
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.0])
-
-    interp_tpr = []
-    AUC = []
-    x = np.linspace(0, 1, 100)
-
-    num_samp = []
-    for p, y_test in zip(p_list,y_test_list):
-
-        fpr, tpr, _ = roc_curve(y_test, p)
-        interp_tpr.append(np.interp(x, xp=fpr, fp=tpr))
-        roc_auc = auc(fpr, tpr)
-        AUC.append(roc_auc)
-        plt.plot(fpr, tpr, color='darkorange',
-                 lw=lw - 1, alpha=0.3)
-
-    mean = np.mean(interp_tpr, axis=0)
-    std = np.std(interp_tpr, axis=0)
-
-    weights = np.array(num_samp) / np.sum(num_samp)
-    weighted_avg_AUC, weighted_std_AUC = weighted_avg_and_std(AUC, weights)
-
-    plt.plot(x, mean, color='darkorange', lw=lw,
-             label='AUC: {:.2f} ({:.2f}), best: {:.2}'.format(weighted_avg_AUC, weighted_std_AUC, np.max(AUC)))
-    plt.fill_between(x, mean + std, mean - std, alpha=0.2, color='darkorange')
-    plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--', label='Chance')
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.legend(loc='lower right')
-    save_to = data_root / folder_name / 'participant_lvl' / (exp_name + '_ROC.pdf')
-    plt.savefig(save_to)
-    plt.close()
 
 
 
@@ -395,10 +451,12 @@ def main(data_root: str, medicated_split: bool = False):
 
             #sub_df = pd.merge(sub_df, baseline_df, on=['Participant_ID', 'Sentence_ID', 'Diagnosis'], how='inner', )
             print(sub_df.Attempt.unique())
-            sentence_lvl_plots(data_root, sub_df, attempt)
+            folder_name =  'figures_attempt{}'.format(attempt)
+
+            sentence_lvl_plots(data_root, sub_df, attempt,folder_name)
 
             participant_table = transform2participant_lvl(sub_df)
-            participant_lvl_plots(data_root, participant_table, network_features, 'figures_attempt{}'.format(attempt))
+            participant_lvl_plotsV2(data_root, participant_table, network_features,folder_name)
     elif medicated_split:
         print('Warning: Medicated Split only implemented for the MRC dataset')
         medication_info = pd.read_csv("../../data/MRC/MedicationInfo.csv")
@@ -418,7 +476,7 @@ def main(data_root: str, medicated_split: bool = False):
             sentence_lvl_plots(data_root, sub_df, attempt, folder_name='medicated{}'.format(is_medicated))
 
             participant_table = transform2participant_lvl(sub_df)
-            participant_lvl_plots(data_root, participant_table, network_features, 'medicated{}'.format(is_medicated))
+            participant_lvl_plotsV2(data_root, participant_table, network_features, 'medicated{}'.format(is_medicated))
 
 
 
@@ -429,7 +487,7 @@ def main(data_root: str, medicated_split: bool = False):
         df = network_df
         sentence_lvl_plots(data_root, df, 1,folder_name='figures_attempt1')
         participant_table = transform2participant_lvl(df)
-        participant_lvl_plots(data_root, participant_table, network_features, 'figures_attempt1')
+        participant_lvl_plotsV2(data_root, participant_table, network_features, 'figures_attempt1')
 
 
     return 0
