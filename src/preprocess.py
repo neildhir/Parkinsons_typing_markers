@@ -1243,8 +1243,6 @@ def create_char_data(
     # Get the unique number of subjects
     subjects = sorted(set(df.participant_id))  # NOTE: set() is weakly random
 
-    # Corrected inter-key-intervals (i.e. timestamp difference / delta)
-    # corrected_inter_key_intervals, _ = iki_pause_correction(df, char_count_response_threshold)
     corrected_inter_key_intervals, _ = typing_dynamics_editor(df, "iki", char_count_response_threshold)
 
     # All sentences will be stored here, indexed by their type
@@ -1268,17 +1266,6 @@ def create_char_data(
                 df.loc[coordinates, "key"].tolist(), removal_character=backspace_char, invokation_type=invokation_type
             )
 
-            # Get timestamps for key presses, remove timestamps for deleted keys, calculate iki and store in dict
-            # timings = df.loc[coordinates, "timestamp"].values
-            # corrected_timings = np.delete(timings, character_indices_to_delete)
-            # iki_timings = corrected_timings[1:] - corrected_timings[:-1]
-            # numeric_iki[subject][sentence] = list(iki_timings)
-            # assert all(
-            #     i > 0 for i in numeric_iki[subject][sentence]
-            # ), "Negative IKI for subject {} at sentence {}.".format(subject, sentence)
-            # if all([i > 0 for i in numeric_iki[subject][sentence]]):
-            #     negative_IKI.append((subject, sentence))
-
             # Note that sentences are lower-cased here
             character_only_sentences[subject][sentence] = "".join(corrected_sentence).lower()
             character_only_sentences_list[subject][sentence] = [c.lower() for c in corrected_sentence]
@@ -1291,12 +1278,6 @@ def create_char_data(
                 len(character_only_sentences[subject][sentence]) - 1,
             )
 
-            # print(
-            #     "IKI: len(chars) == {}, len(iki) == {}".format(
-            #         len(character_only_sentences[subject][sentence]), len(numeric_iki[subject][sentence])
-            #     )
-            # )
-
             if "location" in df.columns:
                 # Get the key location [only for MRC dataset]
                 keyboard_locs = df.loc[coordinates, "location"].values
@@ -1307,15 +1288,6 @@ def create_char_data(
 
             if mode == "MRC_MODE":
 
-                # keypress_timings = df.loc[coordinates, "keyup"].values - df.loc[coordinates, "keydown"].values
-                # keypress_timings = np.delete(keypress_timings, character_indices_to_delete)
-                # assert len(keypress_timings) == len(character_only_sentences[subject][sentence])
-                # hold_down_time[subject][sentence] = list(keypress_timings)
-
-                # pause[subject][sentence] = [
-                #     a - b for a, b in zip(numeric_iki[subject][sentence], hold_down_time[subject][sentence][:-1])
-                # ]
-
                 keypress_timings = np.delete(corrected_key_hold_times[sentence][subject], character_indices_to_delete)
                 assert len(keypress_timings) == len(character_only_sentences[subject][sentence]), (
                     len(keypress_timings),
@@ -1323,26 +1295,13 @@ def create_char_data(
                 )
                 hold_down_time[subject][sentence] = list(keypress_timings)
 
-                # print(
-                #     "hold_down: len(chars) == {}, len(hold_down) == {}".format(
-                #         len(character_only_sentences[subject][sentence]), len(hold_down_time[subject][sentence])
-                #     )
-                # )
-
                 # Get pause between key-presses
                 pause = [i - j for i, j in zip(numeric_iki[subject][sentence], hold_down_time[subject][sentence][:-1])]
-                # np.delete(corrected_key_pause_times[sentence][subject], character_indices_to_delete)
                 assert len(pause) == len(character_only_sentences[subject][sentence]) - 1, (
                     len(pause),
                     len(character_only_sentences[subject][sentence]) - 1,
                 )
                 pause_time[subject][sentence] = pause
-
-                # print(
-                #     "pause: len(chars) == {}, len(pause) == {}".format(
-                #         len(character_only_sentences[subject][sentence]), len(pause_time[subject][sentence])
-                #     )
-                # )
 
     if mode == "MRC_MODE":
         return (

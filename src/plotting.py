@@ -18,8 +18,87 @@ from sklearn.metrics import auc, roc_curve
 from sklearn.preprocessing import label_binarize
 
 
-def split(word):
-    return [char.lower() for char in word]
+def get_same_hand_vector(ss):
+    kb = [
+        "q",
+        "w",
+        "e",
+        "r",
+        "t",
+        "y",
+        "u",
+        "i",
+        "o",
+        "p",
+        "a",
+        "s",
+        "d",
+        "f",
+        "g",
+        "h",
+        "j",
+        "k",
+        "l",
+        "\;",
+        "z",
+        "x",
+        "c",
+        "v",
+        "b",
+        "n",
+        "m",
+        "\,",
+        ".",
+        "\/",
+        " ",
+    ]
+    hands = [
+        "l",
+        "l",
+        "l",
+        "l",
+        "l",
+        "r",
+        "r",
+        "r",
+        "r",
+        "r",
+        "l",
+        "l",
+        "l",
+        "l",
+        "l",
+        "r",
+        "r",
+        "r",
+        "r",
+        "r",
+        "l",
+        "l",
+        "l",
+        "l",
+        "l",
+        "r",
+        "r",
+        "r",
+        "r",
+        "r",
+        "e",
+    ]
+    assert len(kb) == len(hands)
+    hand_vec = []
+    hand_vec.insert(0, "different")
+    for i in range(1, len(ss)):
+        if hands[kb.index(ss[i])] == hands[kb.index(ss[i - 1])]:
+            hand_vec.insert(i, "same")
+        else:
+            hand_vec.insert(i, "different")
+
+    # remap to binary
+    palette = sns.color_palette("deep")
+    my_map = {"different": palette[2], "same": palette[3]}
+
+    return [my_map[i] for i in hand_vec]
 
 
 def get_sentence_stats(df, target_sentence, sentence_id, diagnosis, sub_str):
@@ -135,12 +214,16 @@ def time_plot(df, ref_chars, sent_ID, y_min, y_max, save_me=False):
     g.set(ylim=(y_min, y_max))
     g.fig.get_axes()[0].legend(loc="upper center", handletextpad=0.2, ncol=1)
     g.set(xticklabels=ref_chars)
+    # Change axis colours
+    colors = get_same_hand_vector(ref_chars)
+    for j in range(3):
+        [t.set_color(i) for (i, t) in zip(colors, g.fig.get_axes()[j].xaxis.get_ticklabels())]
     g.set_titles("{col_name}")
     g.set_xlabels("")
     g.set_ylabels("Duration $[10^{-2} \ s]$")
 
     if save_me:
-        save_to = "../figures/time_plots/time_plot_sentence_ID_" + str(sent_ID) + ".pdf"
+        save_to = "../figures/time_plots/time_plot_sentence_ID_" + str(save_me) + ".pdf"
         plt.savefig(save_to, bbox_inches="tight")
         plt.close()
 

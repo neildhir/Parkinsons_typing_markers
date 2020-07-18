@@ -345,3 +345,15 @@ def get_X_and_y_from_df(df):
         sets[j] = (X, y)
 
     return sets
+
+def get_same_hand_vector(ss):
+    kb = [‘q’,‘w’,‘e’,‘r’,‘t’,‘y’,‘u’,‘i’,‘o’,‘p’,‘a’,‘s’,‘d’,‘f’,‘g’,‘h’,‘j’,‘k’,‘l’,’\;’,’z',‘x’,‘c’,‘v’,‘b’,‘n’,‘m’,‘\,‘,’.‘,’\/’]
+    hands = [‘l’,‘l’,‘l’,‘l’,‘l’,‘r’,‘r’,‘r’,‘r’,‘r’,‘l’,‘l’,‘l’,‘l’,‘l’,‘r’,‘r’,‘r’,‘r’,‘r’,‘l’,‘l’,‘l’,‘l’,‘l’,‘r’,‘r’,‘r’,‘r’,‘r’]
+    hand_vec = []
+    hand_vec.insert(0,“different”)
+    for i in range(1,len(ss)):
+        if hands[kb.index(ss[i])] == hands[kb.index(ss[i-1])]:
+           hand_vec.insert(i,“same”)
+        else:
+           hand_vec.insert(i,“different”)
+    return(hand_vec)
