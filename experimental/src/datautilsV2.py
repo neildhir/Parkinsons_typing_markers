@@ -238,7 +238,7 @@ def adjust_range(df, how='minmax'):
     print('Adjusting range for: {}'.format(cols2normalise))
 
     for normcol in cols2normalise:
-
+        df[normcol] = df[normcol].apply(lambda x: np.asarray(x))
         all_timings = np.concatenate(df[normcol].values)
 
 
@@ -306,7 +306,10 @@ def make_experiment_dataset(data_path, fold_path, participant_norm, global_norm,
     if sentence_norm:
         sentence_normalise(df, how=participant_norm)
     else:
-        participant_normalise(df, how=participant_norm)
+        if participant_norm == 'NONE':
+            print('NO PARTICIPANT NORMALISATION')
+        else:
+            participant_normalise(df, how=participant_norm)
 
     # adjust range
     adjust_range(df, how=global_norm)
