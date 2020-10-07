@@ -1,6 +1,5 @@
 Natural language processing for habitual error detection
 =========
-#TODO fx
 Parkinson’s Disease can be understood as a disorder of motor habits. A prediction of this theory is that early stage Parkinson’s patients will display fewer errors caused by interference from previously over-learned behaviours. We test investigate this prediction in the domain of skilled typing, where actions are easy to record and errors easy to identify.
 
 Models
