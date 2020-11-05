@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 from pathlib import Path
-from src.datautilsV2 import make_experiment_dataset, extract_folds
+from src.datautils import make_experiment_dataset, extract_folds
 from src.models import mk_cnn_model, mk_composite_model
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, TensorBoard
 from tensorflow.keras.optimizers import Adam
