@@ -106,7 +106,7 @@ def create_MRC_dataset(
     pandas dataframe
         Processed dataframe
     """
-    data_root = Path("../data/MRC/")  # My local path
+    data_root = Path("data/MRC/")  # My local path
     backspace_char = "α"
     shift_char = "β"
     df = process_mrc(pd.read_csv(data_root / "MRCData-processed-interpolated.csv"))
@@ -316,7 +316,7 @@ def remap_sentence_ids_for_control_subjects_mrc(df):
 
 def assign_medication_column(df):
     # Load master reference for medication
-    meds = pd.read_csv(Path("../data/MRC") / "MedicationInfo.csv")
+    meds = pd.read_csv(Path("data/MRC") / "MedicationInfo.csv")
     # Pre-assign a column of zeros
     N, _ = df.shape
     df["medication"] = np.zeros(N, dtype=int)
