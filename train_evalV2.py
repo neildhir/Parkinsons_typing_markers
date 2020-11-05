@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from pathlib import Path
-from datautilsV2 import make_experiment_dataset, extract_folds
-from models import mk_cnn_model, mk_composite_model
+from src.datautilsV2 import make_experiment_dataset, extract_folds
+from src.models import mk_cnn_model, mk_composite_model
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, TensorBoard
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras import backend as K
@@ -178,9 +178,10 @@ if __name__ == '__main__':
         ##########################
     if ds == 'MRC':
         ### MJFF ENGLISH PATHS ###
-        root = Path(r'C:\Users\Mathias\repos\habitual_errors_NLP\data\MRC\preproc\char_time')
-
-        data_path = root / 'EnglishData-preprocessed_ALL.csv'
+        #root = Path(r'C:\Users\Mathias\repos\habitual_errors_NLP\data\MRC\preproc\char_time')
+        root = Path('./data/MRC/preproc')
+        #data_path = root / 'EnglishData-preprocessed_ALL.csv'
+        data_path = root / 'EnglishData-preprocessed.csv'
         fold_path = root / 'mrc_fold_all.csv'
         # char2idx_path = root / 'EnglishData-preprocessed_attempt_1_char2idx.json'
         name = 'MRC'
