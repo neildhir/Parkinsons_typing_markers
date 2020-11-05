@@ -6,6 +6,7 @@ import cv2
 import argparse
 from pathlib import Path
 import pandas as pd
+import os
 import json
 
 import matplotlib.pyplot as plt
@@ -100,7 +101,8 @@ def plot_gradcam(g, sent, timings, hold_time, pause_time, saveto, metastring):
 
 def main(root_dir):
     root = Path(root_dir)
-
+    if not os.path.exists(root / 'gradcam'):
+        os.makedirs(root / 'gradcam')
 
 
     gradcam_meta_dict = {}
