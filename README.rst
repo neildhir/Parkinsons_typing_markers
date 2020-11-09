@@ -49,3 +49,17 @@ Features
 * Coordinates of all typed characters, per sentence, per subject
 * On/off medication [this is not the target which is binary PD/HC]
 
+
+
+Run the code!
+--------
+To promote reproducability we have provided a Dockerfile build on the tensorflow/tensorflow:2.1.0-gpu-py3 image.
+For information on how to install docker please refer to https://docs.docker.com/get-docker/
+
+
+Once you have docker installed run the following command to build the docker image::
+    Hej
+
+
+
+
