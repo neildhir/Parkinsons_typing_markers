@@ -57,9 +57,9 @@ To promote reproducability we have provided a Dockerfile build on the tensorflow
 For information on how to install docker please refer to https://docs.docker.com/get-docker/
 
 
-Once you have docker installed run the following command to build the docker image::
+Once you have docker installed run the following command to build the docker image:
 
-docker build -f Dockerfile . -t pdtyping
+..docker build -f Dockerfile . -t pdtyping::
 
 
 
