@@ -20,12 +20,15 @@ import json
 
 def run_experiment(data_path, fold_path, prefix, participant_norm, global_norm, sentence_norm=False, hold_time=False,
                    feature_type='standard'):
+
+    MAX_EPOCHS = 1
+
     res_cols = ['Participant_ID', 'Diagnosis', 'Sentence_ID', 'fold', 'PPTS_list',
                 'IKI_timings_original', 'hold_time_original', 'pause_time_original']#, 'Attempt']
     if hold_time:
         res_cols = res_cols + ['hold_time_original']
 
-    save_path = Path('../results')
+    save_path = Path('./results')
     print(prefix)
     if not os.path.exists(save_path / prefix):
         os.makedirs(save_path / prefix)
@@ -77,7 +80,7 @@ def run_experiment(data_path, fold_path, prefix, participant_norm, global_norm, 
 
         wordpair_model = mk_cnn_model(input_shape)
         wordpair_model.compile(Adam(1e-3), 'sparse_categorical_crossentropy', metrics=['accuracy'])
-        history = wordpair_model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=200, verbose=1,
+        history = wordpair_model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=MAX_EPOCHS, verbose=1,
                                      batch_size=16, shuffle=True,
                                      class_weight=class_weight, callbacks=callbacks)
         #bz = 64
@@ -110,7 +113,7 @@ def run_experiment(data_path, fold_path, prefix, participant_norm, global_norm, 
         sentence_model.layers[2].trainable = False
 
         sentence_model.compile(Adam(1e-3), 'sparse_categorical_crossentropy', metrics=['accuracy'])
-        history = sentence_model.fit(x_train, y_train, callbacks=callbacks, validation_data=(x_val,y_val), epochs=200, verbose=1,
+        history = sentence_model.fit(x_train, y_train, callbacks=callbacks, validation_data=(x_val,y_val), epochs=MAX_EPOCHS, verbose=1,
                                      batch_size=16, shuffle=True, class_weight=class_weight)
         #bz = 128
 
@@ -129,7 +132,7 @@ def run_experiment(data_path, fold_path, prefix, participant_norm, global_norm, 
         sentence_model.layers[2].trainable = True
 
         sentence_model.compile(Adam(1e-4), 'sparse_categorical_crossentropy', metrics=['accuracy'])
-        history = sentence_model.fit(x_train, y_train, callbacks=callbacks, validation_data=(x_val,y_val), epochs=200, verbose=1,
+        history = sentence_model.fit(x_train, y_train, callbacks=callbacks, validation_data=(x_val,y_val), epochs=MAX_EPOCHS, verbose=1,
                                      batch_size=32, shuffle=True, class_weight=class_weight)
         hist_df = pd.DataFrame(history.history)
         save_to = save_path / prefix / 'logs' / 'tuned_f{}.csv'.format(test_fold)
