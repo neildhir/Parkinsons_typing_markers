@@ -59,7 +59,6 @@ For information on how to install docker please refer to https://docs.docker.com
 
 Once you have docker installed run the following command to build the docker image::
 
-.. code:: bash
 docker build -f Dockerfile . -t pdtyping
 
 
