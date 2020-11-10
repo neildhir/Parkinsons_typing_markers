@@ -1,0 +1,48 @@
+train:
+  general:
+    max_epochs: 1
+    batch_size_1: 16
+    batch_size_2: 16
+    batch_size_3: 32
+    lr_1: 0.001
+    lr_2: 0.001
+    lr_3: 0.0001
+    class_weight: {0: 1, 1: 1.5}
+  earlystopping:
+    patience: 16
+    monitor: 'val_loss'
+    verbose: 1
+    restore_best_weights: True
+  reducelr:
+    monitor: 'val_loss'
+    factor: 0.5
+    patience: 10
+    min_delta: 0.0001
+    cooldown: 0
+    min_lr: 0
+    mode: 'auto'
+    verbose: 1       
+experiment:
+  timeonly:
+    features: 'timeonly'
+    hold_time: True
+    participant_norm: 'robust'
+    sentence_norm: False
+    global_norm: 'robust'
+  timeandchar:
+    features: 'standard'
+    hold_time: True
+    participant_norm: 'robust'
+    sentence_norm: False
+    global_norm: 'robust'
+  char2vec:
+    features: 'char2vec'
+    hold_time: True
+    participant_norm: 'robust'
+    sentence_norm: False
+    global_norm: 'robust'
+
+
+
+
+
