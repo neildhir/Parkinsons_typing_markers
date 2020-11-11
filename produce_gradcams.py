@@ -177,8 +177,8 @@ def main(root_dir):
     # with open(root/ 'gradcam' / 'gradcam_meta.json','w') as fp:
     # json.dump(gradcam_meta_dict,fp,separators=(',', ':'), sort_keys=True, indent=4)
 
-
     return 0
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
