@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 
 """
-Command line script for preprocessing execution
-
+Command line script for preprocessing execution.
 """
 from src.preprocess import preprocessMRC
 

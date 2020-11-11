@@ -1,11 +1,13 @@
 #!/usr/bin/env python
-import pandas as pd
-import numpy as np
-from scipy.stats import iqr
-from pathlib import Path
 import json
-from tensorflow.keras.preprocessing.sequence import pad_sequences
 from collections import Counter
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from scipy.stats import iqr
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+
 from gensim.models import KeyedVectors
 
 
@@ -96,7 +98,6 @@ def sentence_normalise(df, how="divmean"):
     cols2normalise = ["IKI_timings"]
     if "hold_time" in df.columns:
         cols2normalise = cols2normalise + ["hold_time"]
-
 
     for normcol in cols2normalise:
         df[normcol] = df[normcol].apply(lambda x: np.asarray(x))
@@ -214,6 +215,7 @@ def mk_timeonly_dataset(df: pd.DataFrame, hold_time: bool):
         X.append(x)
     return np.asarray(X), y, space_locations
 
+
 def adjust_range(df, how="minmax"):
     how_allowed = ["minmax", "robust"]
     assert how in how_allowed, "{} not in allowed values: {}".format(how, how_allowed)
@@ -239,7 +241,6 @@ def adjust_range(df, how="minmax"):
             median = np.median(all_timings)
             iq_range = iqr(all_timings)
             df[normcol] = (df[normcol] - median) / (iq_range)
-
 
         else:
             raise ValueError
@@ -321,7 +322,6 @@ def make_experiment_dataset(
             X_sentence, y_sentence, df.fold.values, space_locations
         )
 
-
     # print('WARNING MAXLEN 700')
     X_sentence = pad_sequences(X_sentence, maxlen=None, dtype="float16")
     X_wordpair = pad_sequences(X_wordpair, maxlen=None, dtype="float16")
@@ -340,4 +340,3 @@ if __name__ == "__main__":
     )
 
     print("Done")
-

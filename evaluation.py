@@ -1,30 +1,15 @@
+import argparse
+import os
 from pathlib import Path
-import pandas as pd
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+from scipy.stats import iqr
 from sklearn.ensemble import RandomForestClassifier as RFC
 from sklearn.linear_model import LogisticRegression as LR
-from sklearn.metrics import roc_curve, auc
-from scipy.stats import iqr
-from sklearn.metrics import roc_auc_score
-import matplotlib.pyplot as plt
-import os
-import argparse
-import matplotlib as mpl
-
-nice_fonts = {
-    # Use LaTeX to write all text
-    "text.usetex": False,  # True,
-    "font.family": "serif",
-    # Use 10pt font in plots, to match 10pt font in document
-    "axes.labelsize": 10,
-    "font.size": 10,
-    # Make the legend/label fonts a little smaller
-    "legend.fontsize": 8,
-    "xtick.labelsize": 8,
-    "ytick.labelsize": 8,
-}
-# Universal update for fonts: https://jwalton.info/Embed-Publication-Matplotlib-Latex/
-mpl.rcParams.update(nice_fonts)
+from sklearn.metrics import auc, roc_auc_score, roc_curve
 
 
 def one_outLR(df, features):
@@ -484,7 +469,6 @@ def main(data_root: str, medicated_split: bool = False):
 
             participant_table = transform2participant_lvl(sub_df)
             participant_lvl_plotsV2(data_root, participant_table, network_features, "medicated{}".format(is_medicated))
-
 
     else:
         # baseline_df = pd.read_csv(baseline_path)

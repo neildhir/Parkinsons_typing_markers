@@ -1,23 +1,24 @@
 #!/usr/bin/env python
-from pathlib import Path
-from src.datautils import make_experiment_dataset, extract_folds
-from src.models import mk_cnn_model, mk_composite_model
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, TensorBoard
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras import backend as K
-from sklearn.model_selection import train_test_split
-from tensorflow.keras.models import load_model
+import argparse
+import json
+import os
+import sys
 from copy import copy
-from sklearn.metrics import roc_curve, auc
-from sklearn.metrics import roc_auc_score
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
-import sys
-import os
 import pandas as pd
-import json
+from sklearn.metrics import auc, roc_auc_score, roc_curve
+from sklearn.model_selection import train_test_split
+from tensorflow.keras import backend as K
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, TensorBoard
+from tensorflow.keras.models import load_model
+from tensorflow.keras.optimizers import Adam
+
 from config.config import cfg
-import argparse
+from src.datautils import extract_folds, make_experiment_dataset
+from src.models import mk_cnn_model, mk_composite_model
 
 
 def run_experiment(
@@ -102,7 +103,7 @@ def run_experiment(
 
         input_shape = x_train.shape[1:]
 
-        wordpair_model = mk_composite_model(input_shape,cfg, mode='word')
+        wordpair_model = mk_composite_model(input_shape, cfg, mode="word")
         wordpair_model.compile(Adam(cfg.train.general.lr_1), "sparse_categorical_crossentropy", metrics=["accuracy"])
 
         history = wordpair_model.fit(
@@ -134,7 +135,7 @@ def run_experiment(
         x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.2, shuffle=True)
 
         input_shape = x_train.shape[1:]
-        sentence_model = mk_composite_model(input_shape, cfg, mode='sentence')
+        sentence_model = mk_composite_model(input_shape, cfg, mode="sentence")
 
         # Extract filter weights from worpair_model and freeze
         sentence_model.layers[0].set_weights(wordpair_model.layers[0].get_weights())
@@ -247,4 +248,3 @@ if __name__ == "__main__":
         feature_type=cfg.experiment[args.experiment].features,
     )
     print("Done")
-
