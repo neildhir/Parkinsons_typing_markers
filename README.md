@@ -1,7 +1,30 @@
-Work in progress.
+# Identifying robust markers of Parkinson’s disease in typing behaviour using a CNN-LSTM network
 
-Run the code!
---------
+There is urgent need for non-intrusive tests that can detect early signs of Parkinson’s disease (PD), a debilitating neurodegenerative disorder that affects motor control. Recent promising research has focused on disease markers evident in the fine-motor behaviour of typing. Most work to date has focused solely on the timing of keypresses without reference to the linguistic content. In this paper we argue that the identity of the key combinations being produced should impact how they are handled by people with PD, and provide evidence that natural language processing methods can thus be of help in identifying signs of disease. We test the performance of a bi-directional LSTM with convolutional features in distinguishing people with PD from age-matched controls typing in English and Spanish, both in clinics and online.
+
+Neil Dhir, Mathias Edman, Álvaro Sanchez Ferro, Tom Stafford, Colin Bannard
+
+```
+@inproceedings{dhir-etal-2020-identifying,
+    title = "Identifying robust markers of {P}arkinson{'}s disease in typing behaviour using a {CNN}-{LSTM} network",
+    author = "Dhir, Neil  and
+      Edman, Mathias  and
+      Sanchez Ferro, {\'A}lvaro  and
+      Stafford, Tom  and
+      Bannard, Colin",
+    booktitle = "Proceedings of the 24th Conference on Computational Natural Language Learning",
+    month = nov,
+    year = "2020",
+    address = "Online",
+    publisher = "Association for Computational Linguistics",
+    url = "https://www.aclweb.org/anthology/2020.conll-1.47",
+    pages = "578--595"
+}
+
+```
+
+
+## Run the code!
 To promote reproducability we have provided a Dockerfile build on the tensorflow/tensorflow:2.1.0-gpu-py3 image.
 For information on how to install docker please refer to https://docs.docker.com/get-docker/
 
@@ -29,7 +52,7 @@ docker run --rm -it -v $(pwd):/opt/project pdtyping bash ./download_data.sh
 ```
 
 
-After downloading the raw data, execute the data preprocessing script 
+After downloading the raw data, execute the data preprocessing script
 
 ```
 docker run --rm -it -v $(pwd):/opt/project pdtyping python run_preprocessing.py
@@ -41,14 +64,14 @@ command line script with the corresponding flag.
 
 `
 -e timeandchar
-` *Time and Character (one-hot)* 
+` *Time and Character (one-hot)*
 
 `
 -e timeonly
 ` *Time Only*
 
 `
--e word2vec 
+-e word2vec
 ` *Time and Character (CBOW)*
 
 E.g. to reproduce the "Time and Character (one-hot)" experiment for the "Online English" dataset run
@@ -67,10 +90,25 @@ docker run --rm -it -v $(pwd):/opt/project pdtyping python evaluate.py -d result
 
 
 Finally if you wish to produce GradCam visualisations for the experiment
-run `produce_gradcams.py` with flag `-d` pointing to the results directory. 
+run `produce_gradcams.py` with flag `-d` pointing to the results directory.
 
 
 ```
 docker run --rm -it -v $(pwd):/opt/project pdtyping python produce_gradcams.py -d results/conll2020_MRC_P-robust_G-robust_S-0_standard
 ```
 
+## License
+
+Copyright © Neil Dhir, Mathias Edman, Álvaro Sanchez Ferro, Tom Stafford, Colin Bannard
+
+This is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+It is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the [GNU General Public License](gpl-3.0.txt) along with the software herein.  If not, see [http://www.gnu.org/licenses/](http://www.gnu.org/licenses/).
