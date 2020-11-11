@@ -28,6 +28,14 @@ To download the *"Online English"* dataset into to the correct location run:
 docker run --rm -it -v $(pwd):/opt/project pdtyping bash ./download_data.sh
 ```
 
+
+After downloading the raw data, execute the data preprocessing script 
+
+```
+docker run --rm -it -v $(pwd):/opt/project pdtyping python preprocess.py
+```
+
+
 To reproduce the results from the "Online English" dataset presented in Table 2 execute the run_experiments.py
 command line script with the corresponding flag.
 
