@@ -7,15 +7,13 @@ from itertools import chain, count, groupby
 from operator import itemgetter
 from os import path
 from pathlib import Path
+from statistics import median
 from typing import Tuple
 
 import numpy as np
-from statistics import median
 import pandas as pd
 from nltk.metrics import edit_distance  # Levenshtein
-from scipy.stats import gamma, gengamma, lognorm, iqr
-
-#from .__init_paths import *  # One should not do this, but here it is fine
+from scipy.stats import gamma, gengamma, iqr, lognorm
 
 # ------------------------------------------ MRC------------------------------------------ #
 
