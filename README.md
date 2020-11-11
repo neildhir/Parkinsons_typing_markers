@@ -32,7 +32,7 @@ docker run --rm -it -v $(pwd):/opt/project pdtyping bash ./download_data.sh
 After downloading the raw data, execute the data preprocessing script 
 
 ```
-docker run --rm -it -v $(pwd):/opt/project pdtyping python preprocess.py
+docker run --rm -it -v $(pwd):/opt/project pdtyping python run_preprocessing.py
 ```
 
 
@@ -54,7 +54,7 @@ command line script with the corresponding flag.
 E.g. to reproduce the "Time and Character (one-hot)" experiment for the "Online English" dataset run
 
 ```
-docker run --rm -it -v $(pwd):/opt/project pdtyping python run_experiments.py -e timeandchar
+docker run --rm -it -v $(pwd):/opt/project pdtyping python run_experiment.py -e timeandchar
 ```
 
 The resulting predictions and logs will be written to results/conll2020_MRC_{experiment flags}.
