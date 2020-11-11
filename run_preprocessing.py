@@ -6,6 +6,7 @@ Command line script for preprocessing execution
 """
 from src.preprocess import preprocessMRC
 
+
 def main():
 
     proc = preprocessMRC()
@@ -13,6 +14,5 @@ def main():
     out.to_csv("data/MRC/preproc/EnglishData-preprocessed.csv", index=False)
 
 
-
-if __name__ == '__main__':
-     main()
+if __name__ == "__main__":
+    main()
