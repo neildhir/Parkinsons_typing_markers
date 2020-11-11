@@ -127,7 +127,7 @@ def sentence_normalise(df, how='divmean'):
 
 
 def mk_char2vec_dataset(df: pd.DataFrame, hold_time: bool):
-    char2vec = KeyedVectors.load('cbow10_w3.wv')
+    char2vec = KeyedVectors.load('./misc/cbow10_w3.wv')
     extra_channels = 1
     if hold_time:
         extra_channels += 2
@@ -279,7 +279,6 @@ def extract_folds(X_dict, y_dict, test_fold):
 def make_experiment_dataset(data_path, fold_path, participant_norm, global_norm,sentence_norm = False, hold_time = False, feature_type = 'standard'):
     # read from file
     df = pd.read_csv(data_path)
-    print(df.head())
     df['IKI_timings'] = df.IKI_timings.apply(lambda x: eval(x))
     df['IKI_timings_original'] = df['IKI_timings']
     df['PPTS_list'] = df.PPTS_list.apply(lambda x: eval(x))
