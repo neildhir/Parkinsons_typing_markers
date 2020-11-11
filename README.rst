@@ -1,55 +1,4 @@
-Natural language processing for habitual error detection
-=========
-Parkinson’s Disease can be understood as a disorder of motor habits. A prediction of this theory is that early stage Parkinson’s patients will display fewer errors caused by interference from previously over-learned behaviours. We test investigate this prediction in the domain of skilled typing, where actions are easy to record and errors easy to identify.
-
-Models
--------
-
-* Sentence classification via neural NLP.
-* (Grammar error correction via neural NLP) this is not currently being pursued but it remains a good idea.
-
-Goal
---------
-
-Design an easy and simple test that would give early warning that habitual control is starting to degrade.
-
-Data augmentation
--------
-[New section as of 11/12/2019]
-
-- Consider novel methods for data augmentation incl:
-    - Keyboard matrix approach
-    - Sample slice matrices from all concatenated typed sentences, per subject, converted to one-hot encoding
-
-**Keyboard matrix**
-
-.. image:: ./figures/keyboard_matrix.png
-
-**Slice sampling**
-
-.. image:: ./figures/slice_sampling.png
-
-New modelling paradigms [new from 11/12/2019]
---------
-
-- Do not use hyperparameter optimisation, not clear that it adds much
-- Rebuild 1D convolutions from scratch, and progressively add complexity
-- Add more early callbacks to prevent overfitting
-- The model needs to be changed to take into account new data augmentation approaches
-    - Keyboard matrix
-    - Slice sampling all concatenated sentences per subject
-
-
-Features
---------
-
-* Raw typed sentences without being embedded
-* Raw typed sentences as embedded vectors
-* IKI
-* Coordinates of all typed characters, per sentence, per subject
-* On/off medication [this is not the target which is binary PD/HC]
-
-
+Work in progress.
 
 Run the code!
 --------
@@ -61,6 +10,40 @@ Once you have docker installed run the following command to build the docker ima
 
 ``bash
 docker build -f Dockerfile . -t pdtyping
+``
+
+(OPTIONAL)
+To run a terminal in the container:
+``bash
+docker run --rm -it -v $(pwd):/opt/project pdtyping bash
+``
+
+Alternatively you can run scripts directly with the docker container via the run command.
+Note that the following examples assumes that you have navigated to the repository root directory.
+
+To download the "Online English" dataset into to the correct location run:
+``bash
+docker run --rm -it -v $(pwd):/opt/project pdtyping bash ./download_data.sh
+``
+
+To reproduce the results from the "Online English" dataset presented in Table 2 execute the run_experiments.py
+command line script with the corresponding flag.
+``bash
+-e timeandchar "Time and Character (one-hot)"
+-e timeonly "Time Only"
+-e word2vec "Time and Character (CBOW)"
+``
+e.g. to reproduce the "Time and Character (one-hot)" experiment for the "Online English" dataset run
+``bash
+docker run --rm -it -v $(pwd):/opt/project pdtyping python run_experiments.py -e timeandchar
+``
+
+The resulting predictions and logs will be written to results/MRC_<experiment flags>.
+To analyse and plot the results execute evaluate.py with flag -d pointing to the results directory.
+E.g.
+
+``bash
+python run_experiments.py -e timeandchar
 ``
 
 
