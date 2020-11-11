@@ -41,7 +41,7 @@ def run_experiment(data_path, fold_path, prefix, participant_norm, global_norm, 
     with open(char2idx_path, 'w') as json_file:
         json.dump(char2idx, json_file)
 
-    print(df.shape)
+   
 
     X_wordpair, y_wordpair, fold_wordpair = wordpair_data
     X_sentence, y_sentence = sentence_data
