@@ -102,7 +102,7 @@ def run_experiment(
 
         input_shape = x_train.shape[1:]
 
-        wordpair_model = mk_cnn_model(input_shape)
+        wordpair_model = mk_composite_model(input_shape,cfg, mode='word')
         wordpair_model.compile(Adam(cfg.train.general.lr_1), "sparse_categorical_crossentropy", metrics=["accuracy"])
 
         history = wordpair_model.fit(
@@ -134,7 +134,7 @@ def run_experiment(
         x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.2, shuffle=True)
 
         input_shape = x_train.shape[1:]
-        sentence_model = mk_composite_model(input_shape)
+        sentence_model = mk_composite_model(input_shape, cfg, mode='sentence')
 
         # Extract filter weights from worpair_model and freeze
         sentence_model.layers[0].set_weights(wordpair_model.layers[0].get_weights())

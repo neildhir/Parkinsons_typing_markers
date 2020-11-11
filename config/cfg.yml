@@ -8,6 +8,21 @@ train:
     lr_2: 0.001
     lr_3: 0.0001
     class_weight: {0: 1, 1: 1.5}
+  word:
+    reg: 0.000001
+    drop: 0.3
+  sentence:
+    reg: 0.000001
+    drop: 0.5
+  network:
+    filters_1: 16
+    filters_2: 8
+    kernel_size: 4
+    strides: 1
+    padding: 'valid'
+    activation: 'relu'
+    lstm_hidden: 64
+    outact: 'softmax'
   earlystopping:
     patience: 16
     monitor: 'val_loss'
