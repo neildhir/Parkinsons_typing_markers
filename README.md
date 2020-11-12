@@ -25,7 +25,7 @@ Authors: Neil Dhir, Mathias Edman, Álvaro Sanchez Ferro, Tom Stafford and Colin
 
 ## Highlight from the paper
 
-The colours represent the importance of the different parts of the string for determiningthat the typist has PD. The bottom numbers are the inter-key intervals between typed characters.
+The colours represent the importance of the different parts of the string for determining that the typist has Parkinson's disease. The bottom numbers are the inter-key intervals between typed characters.
 
 ![Grad-CAM example from paper.](gradcam.png)
 
