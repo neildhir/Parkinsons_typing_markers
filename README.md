@@ -1,4 +1,4 @@
-# Identifying robust markers of Parkinson’s disease in typing behaviour using a CNN-LSTM network
+# [Identifying robust markers of Parkinson’s disease in typing behaviour using a CNN-LSTM network](https://www.aclweb.org/anthology/2020.conll-1.47.pdf)
 
 There is an urgent need for non-intrusive tests that can detect early signs of Parkinson’s disease (PD), a debilitating neurodegenerative disorder that affects motor control. Recent promising research has focused on disease markers evident in the fine-motor behaviour of typing. Most work to date has focused solely on the timing of keypresses without reference to the linguistic content. In this paper we argue that the identity of the key combinations being produced should impact how they are handled by people with PD, and provide evidence that natural language processing methods can thus be of help in identifying signs of disease. We test the performance of a bi-directional LSTM with convolutional features in distinguishing people with PD from age-matched controls typing in English and Spanish, both in clinics and online.
 
@@ -23,9 +23,13 @@ Authors: Neil Dhir, Mathias Edman, Álvaro Sanchez Ferro, Tom Stafford and Colin
 
 ```
 
+## Highlight from the paper
+
+The colours represent the importance of the different parts of the string for determiningthat the typist has PD. The bottom numbers are the inter-key intervals between typed characters.
+
 ![Grad-CAM example from paper.](gradcam.png)
 
-## Installation & running the code to reproduce the results from the [paper](https://www.aclweb.org/anthology/2020.conll-1.47.pdf)
+## Installation & running the code
 
 To promote reproducability we have provided a Dockerfile build on the tensorflow/tensorflow:2.1.0-gpu-py3 image.
 For information on how to install docker please refer to <https://docs.docker.com/get-docker/>.
