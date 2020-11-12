@@ -85,7 +85,7 @@ To analyse and plot the results execute `evaluate.py` with flag `-d` pointing to
 
 
 ```
-docker run --rm -it -v $(pwd):/opt/project pdtyping python evaluate.py -d results/conll2020_MRC_P-robust_G-robust_S-0_standardconll2020 -ms
+docker run --rm -it -v $(pwd):/opt/project pdtyping python evaluation.py -d results/conll2020_MRC_P-robust_G-robust_S-0_standard -ms
 ```
 
 
