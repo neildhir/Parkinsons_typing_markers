@@ -1,6 +1,6 @@
 train:
   general:
-    max_epochs: 1
+    max_epochs: 200
     batch_size_1: 16
     batch_size_2: 16
     batch_size_3: 32
