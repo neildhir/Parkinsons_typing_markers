@@ -293,7 +293,7 @@ def process_mrc(df: pd.DataFrame, unk_symbol="£") -> pd.DataFrame:
 
     # Return only relevant columns
     return df[
-        ["key", "location", "participant_id", "sentence_id", "diagnosis", "medication", "keydown", "keyup"]
+        ["key", "participant_id", "sentence_id", "diagnosis", "medication", "keydown", "keyup"]
     ].reset_index(drop=True)
 
 
