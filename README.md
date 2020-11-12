@@ -4,7 +4,7 @@ There is an urgent need for non-intrusive tests that can detect early signs of P
 
 Authors: Neil Dhir, Mathias Edman, Álvaro Sanchez Ferro, Tom Stafford and Colin Bannard
 
-```
+```[latex]
 @inproceedings{dhir-etal-2020-identifying,
     title = "Identifying robust markers of {P}arkinson{'}s disease in typing behaviour using a {CNN}-{LSTM} network",
     author = "Dhir, Neil  and
@@ -20,7 +20,6 @@ Authors: Neil Dhir, Mathias Edman, Álvaro Sanchez Ferro, Tom Stafford and Colin
     url = "https://www.aclweb.org/anthology/2020.conll-1.47",
     pages = "578--595"
 }
-
 ```
 
 ## Highlight from the paper
