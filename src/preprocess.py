@@ -1761,7 +1761,7 @@ def create_dataframe_from_processed_data(
 
 def create_dataframe_from_processed_data_mrc(
     my_dict: dict,
-    location_dict: dict,
+    #location_dict: dict,
     iki_dict: dict,
     sentence_list_dict: dict,
     hold_down_dict: dict,
@@ -1797,7 +1797,7 @@ def create_dataframe_from_processed_data_mrc(
                         int(df_meta.loc[df_meta.participant_id == participant_id, "diagnosis"].unique()),
                         str(sent_id),
                         str(my_dict[participant_id][sent_id]),
-                        location_dict[participant_id][sent_id],
+                        #location_dict[participant_id][sent_id],
                         iki_dict[participant_id][sent_id] if iki_dict is not None else np.nan,
                         sentence_list_dict[participant_id][sent_id] if sentence_list_dict is not None else np.nan,
                         hold_down_dict[participant_id][sent_id] if hold_down_dict is not None else np.nan,
@@ -1813,7 +1813,7 @@ def create_dataframe_from_processed_data_mrc(
         "Diagnosis",
         "Sentence_ID",
         "Preprocessed_typed_sentence",
-        "locations",
+        #"locations",
         "IKI_timings",
         "PPTS_list",
         "hold_time",
