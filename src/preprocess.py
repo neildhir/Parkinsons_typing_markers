@@ -190,7 +190,7 @@ def create_MRC_dataset(
     # Final formatting of typing data (note that df contains the diagnosis here)
     final = create_dataframe_from_processed_data_mrc(
         sentence_dictionary,
-        location_dictionary,
+        #location_dictionary,
         iki_timings_dictionary,
         sentence_list_dictionary,
         hold_down_dict,
