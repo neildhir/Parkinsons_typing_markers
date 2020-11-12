@@ -18,7 +18,7 @@ from tensorflow.keras.optimizers import Adam
 
 from config.config import cfg
 from src.datautils import extract_folds, make_experiment_dataset
-from src.models import mk_cnn_model, mk_composite_model
+from src.models import mk_composite_model
 
 
 def run_experiment(
