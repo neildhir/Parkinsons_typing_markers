@@ -22,6 +22,8 @@ Authors: Neil Dhir, Mathias Edman, Álvaro Sanchez Ferro, Tom Stafford and Colin
 }
 ```
 
+[Project website](https://typingresearch.com/conll2020/)
+
 ## Highlight from the paper
 
 The colours represent the importance of the different parts of the string for determining that the typist has Parkinson's disease. The bottom numbers are the inter-key intervals between typed characters.
